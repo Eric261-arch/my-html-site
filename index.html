@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Budget - Financial Management App</title>
+    <meta name="description" content="Manage your finances, split bills, and track expenses with Smart Budget">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiU21hcnQgQnVkZ2V0IiAic2hvcnRfbmFtZSI6IlNtYXJ0QnVkZ2V0IiwiaWNvbnMiOlt7InNyYyI6Imh0dHBzOi8vdmlhLnBsYWNlaG9sZGVyLmNvbS8xOTIiLCJzaXplcyI6IjE5MngxOTIiLCJ0eXBlIjoiaW1hZ2UvcG5nIn1dLCJzdGFydF91cmwiOiIvIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJ0aGVtZV9jb2xvciI6IiMzQjgyRjYiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2ZmZmZmZiJ9">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .notification-dot::after { content: ''; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script>
+        // Data Storage Service - Easy to swap to API later
+        class StorageService {
+            constructor() {
+                this.prefix = 'smartbudget_';
+                this.initializeDB();
+            }
+
+            initializeDB() {
+                // Initialize with sample data if empty
+                if (!localStorage.getItem(this.prefix + 'initialized')) {
+                    this.set('users', []);
+                    this.set('currentUser', null);
+                    this.set('incomes', []);
+                    this.set('bills', []);
+                    this.set('linkedAccounts', []);
+                    this.set('notifications', []);
+                    this.set('transactions', []);
+                    this.set('initialized', true);
+                }
+            }
+
+            // These methods can easily be converted to API calls later
+            async get(key) {
+                const data = localStorage.getItem(this.prefix + key);
+                return data ? JSON.parse(data) : null;
+            }
+
+            async set(key, value) {
+                localStorage.setItem(this.prefix + key, JSON.stringify(value));
+                return value;
+            }
+
+            async update(key, updateFn) {
+                const current = await this.get(key);
+                const updated = updateFn(current);
+                return this.set(key, updated);
+            }
+
+            async delete(key) {
+                localStorage.removeItem(this.prefix + key);
+            }
+
+            // User methods
+            async createUser(userData) {
+                const users = await this.get('users') || [];
+                const newUser = {
+                    id: Date.now().toString(),
+                    ...userData,
+                    createdAt: new Date().toISOString(),
+                    creditScore: Math.floor(Math.random() * 200) + 600,
+                    settings: {
+                        privateMode: false,
+                        notifications: true,
+                        currency: 'USD'
+                    }
+                };
+                users.push(newUser);
+                await this.set('users', users);
+                return newUser;
+            }
+
+            async authenticateUser(email, password) {
+                const users = await this.get('users') || [];
+                return users.find(u => u.email === email && u.password === password);
+            }
+
+            // Income methods
+            async addIncome(incomeData) {
+                const incomes = await this.get('incomes') || [];
+                const newIncome = {
+                    id: Date.now().toString(),
+                    ...incomeData,
+                    createdAt: new Date().toISOString()
+                };
+                incomes.push(newIncome);
+                await this.set('incomes', incomes);
+                return newIncome;
+            }
+
+            // Bill methods
+            async addBill(billData) {
+                const bills = await this.get('bills') || [];
+                const newBill = {
+                    id: Date.now().toString(),
+                    ...billData,
+                    createdAt: new Date().toISOString(),
+                    paid: false,
+                    paidBy: []
+                };
+                bills.push(newBill);
+                await this.set('bills', bills);
+                this.checkUpcomingBills();
+                return newBill;
+            }
+
+            async updateBill(billId, updates) {
+                const bills = await this.get('bills') || [];
+                const index = bills.findIndex(b => b.id === billId);
+                if (index !== -1) {
+                    bills[index] = { ...bills[index], ...updates };
+                    await this.set('bills', bills);
+                    return bills[index];
+                }
+                return null;
+            }
+
+            async checkUpcomingBills() {
+                const bills = await this.get('bills') || [];
+                const notifications = await this.get('notifications') || [];
+                const today = new Date();
+                
+                bills.forEach(bill => {
+                    if (!bill.paid) {
+                        const dueDate = new Date(bill.dueDate);
+                        const daysUntil = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+                        
+                        if (daysUntil <= 3 && daysUntil >= 0) {
+                            const exists = notifications.find(n => 
+                                n.type === 'bill_reminder' && n.billId === bill.id
+                            );
+                            
+                            if (!exists) {
+                                notifications.push({
+                                    id: Date.now().toString(),
+                                    type: 'bill_reminder',
+                                    billId: bill.id,
+                                    message: `${bill.name} due in ${daysUntil} days`,
+                                    createdAt: new Date().toISOString(),
+                                    read: false
+                                });
+                            }
+                        }
+                    }
+                });
+                
+                await this.set('notifications', notifications);
+            }
+
+            // Transaction logging for history
+            async logTransaction(type, data) {
+                const transactions = await this.get('transactions') || [];
+                transactions.push({
+                    id: Date.now().toString(),
+                    type,
+                    data,
+                    timestamp: new Date().toISOString()
+                });
+                await this.set('transactions', transactions);
+            }
+        }
+
+        // Initialize storage
+        const storage = new StorageService();
+
+        // Main App
+        class SmartBudgetApp {
+            constructor() {
+                this.currentUser = null;
+                this.currentView = 'login';
+                this.activeTab = 'dashboard';
+                this.privateMode = false;
+                this.init();
+            }
+
+            async init() {
+                this.currentUser = await storage.get('currentUser');
+                if (this.currentUser) {
+                    this.currentView = 'app';
+                }
+                this.render();
+                this.attachEventListeners();
+                
+                // Check for bills periodically
+                setInterval(() => storage.checkUpcomingBills(), 60000);
+            }
+
+            attachEventListeners() {
+                document.addEventListener('click', (e) => {
+                    if (e.target.matches('[data-action]')) {
+                        const action = e.target.dataset.action;
+                        this.handleAction(action, e.target);
+                    }
+                });
+
+                document.addEventListener('submit', (e) => {
+                    if (e.target.matches('[data-form]')) {
+                        e.preventDefault();
+                        const formType = e.target.dataset.form;
+                        this.handleFormSubmit(formType, new FormData(e.target));
+                    }
+                });
+            }
+
+            async handleAction(action, element) {
+                switch(action) {
+                    case 'logout':
+                        await storage.set('currentUser', null);
+                        this.currentUser = null;
+                        this.currentView = 'login';
+                        this.render();
+                        break;
+                    
+                    case 'toggle-private':
+                        this.privateMode = !this.privateMode;
+                        this.render();
+                        break;
+                    
+                    case 'switch-tab':
+                        this.activeTab = element.dataset.tab;
+                        this.render();
+                        break;
+                    
+                    case 'show-modal':
+                        this.showModal(element.dataset.modal);
+                        break;
+                    
+                    case 'close-modal':
+                        this.closeModal();
+                        break;
+                    
+                    case 'mark-paid':
+                        await this.markBillPaid(element.dataset.billId);
+                        break;
+                    
+                    case 'dismiss-notification':
+                        await this.dismissNotification(element.dataset.notificationId);
+                        break;
+                    
+                    case 'switch-to-signup':
+                        document.getElementById('login-form').style.display = 'none';
+                        document.getElementById('signup-form').style.display = 'block';
+                        break;
+                    
+                    case 'switch-to-login':
+                        document.getElementById('signup-form').style.display = 'none';
+                        document.getElementById('login-form').style.display = 'block';
+                        break;
+                }
+            }
+
+            async handleFormSubmit(formType, formData) {
+                const data = Object.fromEntries(formData);
+                
+                switch(formType) {
+                    case 'login':
+                        const user = await storage.authenticateUser(data.email, data.password);
+                        if (user) {
+                            this.currentUser = user;
+                            await storage.set('currentUser', user);
+                            this.currentView = 'app';
+                            this.render();
+                        } else {
+                            alert('Invalid credentials. Try creating a new account!');
+                        }
+                        break;
+                    
+                    case 'signup':
+                        const newUser = await storage.createUser({
+                            name: data.name,
+                            email: data.email,
+                            password: data.password
+                        });
+                        this.currentUser = newUser;
+                        await storage.set('currentUser', newUser);
+                        this.currentView = 'app';
+                        this.render();
+                        break;
+                    
+                    case 'add-income':
+                        await storage.addIncome({
+                            ...data,
+                            amount: parseFloat(data.amount),
+                            userId: this.currentUser.id
+                        });
+                        this.closeModal();
+                        this.render();
+                        break;
+                    
+                    case 'add-bill':
+                        await storage.addBill({
+                            ...data,
+                            amount: parseFloat(data.amount),
+                            userShare: data.isSplit ? parseFloat(data.userShare) : 100,
+                            userId: this.currentUser.id
+                        });
+                        this.closeModal();
+                        this.render();
+                        break;
+                }
+            }
+
+            async markBillPaid(billId) {
+                await storage.updateBill(billId, { paid: true, paidDate: new Date().toISOString() });
+                await storage.logTransaction('bill_paid', { billId, userId: this.currentUser.id });
+                this.render();
+            }
+
+            async dismissNotification(notificationId) {
+                const notifications = await storage.get('notifications') || [];
+                const filtered = notifications.filter(n => n.id !== notificationId);
+                await storage.set('notifications', filtered);
+                this.render();
+            }
+
+            showModal(modalType) {
+                const modalContent = this.getModalContent(modalType);
+                const modal = document.createElement('div');
+                modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 fade-in';
+                modal.innerHTML = `
+                    <div class="glass rounded-2xl p-6 w-full max-w-md">
+                        ${modalContent}
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+
+            closeModal() {
+                const modal = document.querySelector('.fixed.inset-0');
+                if (modal) modal.remove();
+            }
+
+            getModalContent(type) {
+                switch(type) {
+                    case 'income':
+                        return `
+                            <h3 class="text-xl font-bold mb-4">Add Income</h3>
+                            <form data-form="add-income">
+                                <div class="space-y-4">
+                                    <input type="text" name="source" placeholder="Income Source" required
+                                        class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <input type="number" name="amount" placeholder="Amount" step="0.01" required
+                                        class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <select name="frequency" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option value="monthly">Monthly</option>
+                                        <option value="bi-weekly">Bi-weekly</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="one-time">One-time</option>
+                                    </select>
+                                    <select name="type" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option value="salary">Salary</option>
+                                        <option value="freelance">Freelance</option>
+                                        <option value="investment">Investment</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                    <div class="flex space-x-3">
+                                        <button type="submit" class="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                                            Add Income
+                                        </button>
+                                        <button type="button" data-action="close-modal" class="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        `;
+                    
+                    case 'bill':
+                        return `
+                            <h3 class="text-xl font-bold mb-4">Add Bill</h3>
+                            <form data-form="add-bill">
+                                <div class="space-y-4">
+                                    <input type="text" name="name" placeholder="Bill Name" required
+                                        class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <input type="number" name="amount" placeholder="Amount" step="0.01" required
+                                        class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <input type="date" name="dueDate" required
+                                        class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <select name="category" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option value="utilities">Utilities</option>
+                                        <option value="rent">Rent/Mortgage</option>
+                                        <option value="insurance">Insurance</option>
+                                        <option value="subscription">Subscription</option>
+                                        <option value="loan">Loan</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="checkbox" id="split" name="isSplit" onchange="toggleSplitOptions(this)">
+                                        <label for="split">Split this bill</label>
+                                    </div>
+                                    <div id="split-options" style="display:none;">
+                                        <input type="text" name="splitWith" placeholder="Split with (name)"
+                                            class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 mb-2">
+                                        <label class="text-sm text-gray-600">Your share: <span id="share-percent">50</span>%</label>
+                                        <input type="range" name="userShare" min="0" max="100" value="50"
+                                            oninput="document.getElementById('share-percent').textContent = this.value"
+                                            class="w-full">
+                                    </div>
+                                    <div class="flex space-x-3">
+                                        <button type="submit" class="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                                            Add Bill
+                                        </button>
+                                        <button type="button" data-action="close-modal" class="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        `;
+                }
+            }
+
+            async calculateTotals() {
+                const incomes = await storage.get('incomes') || [];
+                const bills = await storage.get('bills') || [];
+                
+                const userIncomes = incomes.filter(i => i.userId === this.currentUser.id);
+                const userBills = bills.filter(b => b.userId === this.currentUser.id);
+                
+                let monthlyIncome = 0;
+                userIncomes.forEach(income => {
+                    switch(income.frequency) {
+                        case 'weekly': monthlyIncome += income.amount * 4.33; break;
+                        case 'bi-weekly': monthlyIncome += income.amount * 2.17; break;
+                        case 'monthly': monthlyIncome += income.amount; break;
+                        case 'one-time': monthlyIncome += income.amount / 12; break;
+                    }
+                });
+                
+                let monthlyBills = 0;
+                userBills.forEach(bill => {
+                    const amount = bill.userShare ? (bill.amount * bill.userShare / 100) : bill.amount;
+                    monthlyBills += amount;
+                });
+                
+                return {
+                    income: monthlyIncome,
+                    bills: monthlyBills,
+                    remaining: monthlyIncome - monthlyBills
+                };
+            }
+
+            async render() {
+                const app = document.getElementById('app');
+                
+                if (this.currentView === 'login') {
+                    app.innerHTML = this.renderLogin();
+                } else {
+                    const totals = await this.calculateTotals();
+                    const incomes = await storage.get('incomes') || [];
+                    const bills = await storage.get('bills') || [];
+                    const notifications = await storage.get('notifications') || [];
+                    
+                    const userIncomes = incomes.filter(i => i.userId === this.currentUser.id);
+                    const userBills = bills.filter(b => b.userId === this.currentUser.id);
+                    const unreadNotifications = notifications.filter(n => !n.read);
+                    
+                    app.innerHTML = this.renderApp(totals, userIncomes, userBills, unreadNotifications);
+                }
+            }
+
+            renderLogin() {
+                return `
+                    <div class="min-h-screen gradient-bg flex items-center justify-center p-4">
+                        <div class="glass rounded-2xl shadow-2xl w-full max-w-md p-8">
+                            <div class="text-center mb-8">
+                                <div class="bg-white bg-opacity-20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                                <h1 class="text-3xl font-bold text-gray-800">Smart Budget</h1>
+                                <p class="text-gray-600 mt-2">Your Financial Management Partner</p>
+                            </div>
+
+                            <div id="login-form">
+                                <form data-form="login">
+                                    <div class="space-y-4">
+                                        <input type="email" name="email" placeholder="Email" required
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                        <input type="password" name="password" placeholder="Password" required
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                        <button type="submit" class="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition">
+                                            Log In
+                                        </button>
+                                    </div>
+                                </form>
+                                <div class="text-center mt-4">
+                                    <button data-action="switch-to-signup" class="text-purple-600 hover:underline">
+                                        Don't have an account? Sign up
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="signup-form" style="display:none;">
+                                <form data-form="signup">
+                                    <div class="space-y-4">
+                                        <input type="text" name="name" placeholder="Full Name" required
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                        <input type="email" name="email" placeholder="Email" required
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                        <input type="password" name="password" placeholder="Password" required
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                        <button type="submit" class="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition">
+                                            Create Account
+                                        </button>
+                                    </div>
+                                </form>
+                                <div class="text-center mt-4">
+                                    <button data-action="switch-to-login" class="text-purple-600 hover:underline">
+                                        Already have an account? Log in
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderApp(totals, incomes, bills, notifications) {
+                return `
+                    <div class="min-h-screen bg-gray-50">
+                        <!-- Header -->
+                        <header class="gradient-bg text-white shadow-lg">
+                            <div class="max-w-7xl mx-auto px-4 py-4">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center space-x-4">
+                                        <div class="bg-white bg-opacity-20 p-2 rounded-lg">
+                                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h1 class="text-xl font-bold">Smart Budget</h1>
+                                            <p class="text-sm opacity-90">Welcome, ${this.currentUser.name}</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-4">
+                                        <div class="relative">
+                                            <button class="${notifications.length > 0 ? 'notification-dot relative' : ''}">
+                                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                        <button data-action="toggle-private" class="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition">
+                                            ${this.privateMode ? 
+                                                '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>' :
+                                                '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>'
+                                            }
+                                        </button>
+                                        <button data-action="logout" class="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </header>
+
+                        <!-- Navigation Tabs -->
+                        <div class="bg-white shadow-sm border-b sticky top-0 z-40">
+                            <div class="max-w-7xl mx-auto">
+                                <div class="flex space-x-8 px-4">
+                                    ${['dashboard', 'income', 'bills', 'history'].map(tab => `
+                                        <button data-action="switch-tab" data-tab="${tab}" 
+                                            class="py-4 px-2 border-b-2 font-medium text-sm transition ${
+                                                this.activeTab === tab 
+                                                    ? 'border-purple-600 text-purple-600' 
+                                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                                            }">
+                                            ${tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Main Content -->
+                        <div class="max-w-7xl mx-auto p-4">
+                            <!-- Notifications -->
+                            ${notifications.length > 0 ? `
+                                <div class="mb-4 space-y-2">
+                                    ${notifications.map(n => `
+                                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 flex justify-between items-center fade-in">
+                                            <div class="flex items-center">
+                                                <svg class="w-5 h-5 text-yellow-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                </svg>
+                                                <span>${n.message}</span>
+                                            </div>
+                                            <button data-action="dismiss-notification" data-notification-id="${n.id}" 
+                                                class="text-yellow-600 hover:text-yellow-800">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+
+                            ${this.activeTab === 'dashboard' ? `
+                                <!-- Dashboard Tab -->
+                                <div class="space-y-6 fade-in">
+                                    <!-- Summary Cards -->
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div class="bg-white rounded-xl shadow-md p-6">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <h3 class="text-gray-600 text-sm font-medium">Monthly Income</h3>
+                                                <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                </svg>
+                                            </div>
+                                            <p class="text-2xl font-bold ${this.privateMode ? 'filter blur-sm' : ''}">
+                                                $${totals.income.toFixed(2)}
+                                            </p>
+                                        </div>
+                                        
+                                        <div class="bg-white rounded-xl shadow-md p-6">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <h3 class="text-gray-600 text-sm font-medium">Monthly Bills</h3>
+                                                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                        d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                                </svg>
+                                            </div>
+                                            <p class="text-2xl font-bold">
+                                                $${totals.bills.toFixed(2)}
+                                            </p>
+                                        </div>
+                                        
+                                        <div class="bg-white rounded-xl shadow-md p-6">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <h3 class="text-gray-600 text-sm font-medium">Remaining</h3>
+                                                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                        d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                </svg>
+                                            </div>
+                                            <p class="text-2xl font-bold ${totals.remaining >= 0 ? 'text-green-600' : 'text-red-600'} ${this.privateMode ? 'filter blur-sm' : ''}">
+                                                $${totals.remaining.toFixed(2)}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Credit Score -->
+                                    <div class="bg-white rounded-xl shadow-md p-6">
+                                        <h3 class="text-lg font-bold mb-4">Credit Score</h3>
+                                        <div class="flex items-center space-x-6">
+                                            <div class="text-center">
+                                                <div class="text-4xl font-bold ${
+                                                    this.currentUser.creditScore >= 750 ? 'text-green-600' : 
+                                                    this.currentUser.creditScore >= 650 ? 'text-yellow-600' : 'text-red-600'
+                                                }">
+                                                    ${this.currentUser.creditScore}
+                                                </div>
+                                                <p class="text-sm text-gray-600 mt-1">
+                                                    ${this.currentUser.creditScore >= 750 ? 'Excellent' : 
+                                                     this.currentUser.creditScore >= 650 ? 'Good' : 'Fair'}
+                                                </p>
+                                            </div>
+                                            <div class="flex-1">
+                                                <div class="bg-gray-200 rounded-full h-4">
+                                                    <div class="h-4 rounded-full transition-all duration-500 ${
+                                                        this.currentUser.creditScore >= 750 ? 'bg-green-600' : 
+                                                        this.currentUser.creditScore >= 650 ? 'bg-yellow-600' : 'bg-red-600'
+                                                    }" style="width: ${((this.currentUser.creditScore - 300) / 550) * 100}%"></div>
+                                                </div>
+                                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                                    <span>300</span>
+                                                    <span>850</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Quick Actions -->
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <button data-action="show-modal" data-modal="income" 
+                                            class="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition flex flex-col items-center space-y-2">
+                                            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            <span class="text-sm font-medium">Add Income</span>
+                                        </button>
+                                        
+                                        <button data-action="show-modal" data-modal="bill" 
+                                            class="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition flex flex-col items-center space-y-2">
+                                            <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                            </svg>
+                                            <span class="text-sm font-medium">Add Bill</span>
+                                        </button>
+                                        
+                                        <button class="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition flex flex-col items-center space-y-2">
+                                            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                            </svg>
+                                            <span class="text-sm font-medium">Link Account</span>
+                                        </button>
+                                        
+                                        <button class="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition flex flex-col items-center space-y-2">
+                                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                            </svg>
+                                            <span class="text-sm font-medium">Card Offers</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            ${this.activeTab === 'income' ? `
+                                <!-- Income Tab -->
+                                <div class="bg-white rounded-xl shadow-md fade-in">
+                                    <div class="p-6 border-b flex justify-between items-center">
+                                        <h2 class="text-xl font-bold">Income Sources</h2>
+                                        <button data-action="show-modal" data-modal="income" 
+                                            class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center space-x-2">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            <span>Add Income</span>
+                                        </button>
+                                    </div>
+                                    <div class="p-6">
+                                        ${incomes.length === 0 ? `
+                                            <div class="text-center py-12">
+                                                <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <p class="text-gray-500">No income sources added yet</p>
+                                                <p class="text-sm text-gray-400 mt-2">Add your income sources to start tracking</p>
+                                            </div>
+                                        ` : `
+                                            <div class="space-y-3">
+                                                ${incomes.map(income => `
+                                                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                                        <div class="flex items-center space-x-4">
+                                                            <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                </svg>
+                                                            </div>
+                                                            <div>
+                                                                <p class="font-medium">${income.source}</p>
+                                                                <p class="text-sm text-gray-600">
+                                                                    ${income.type} • ${income.frequency}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <p class="text-lg font-bold text-green-600 ${this.privateMode ? 'filter blur-sm' : ''}">
+                                                            $${income.amount.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        `}
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            ${this.activeTab === 'bills' ? `
+                                <!-- Bills Tab -->
+                                <div class="bg-white rounded-xl shadow-md fade-in">
+                                    <div class="p-6 border-b flex justify-between items-center">
+                                        <h2 class="text-xl font-bold">Bills & Payments</h2>
+                                        <button data-action="show-modal" data-modal="bill" 
+                                            class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center space-x-2">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            <span>Add Bill</span>
+                                        </button>
+                                    </div>
+                                    <div class="p-6">
+                                        ${bills.length === 0 ? `
+                                            <div class="text-center py-12">
+                                                <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                                </svg>
+                                                <p class="text-gray-500">No bills added yet</p>
+                                                <p class="text-sm text-gray-400 mt-2">Add your bills to track due dates and payments</p>
+                                            </div>
+                                        ` : `
+                                            <div class="space-y-3">
+                                                ${bills.map(bill => `
+                                                    <div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                                        <div class="flex items-center justify-between mb-3">
+                                                            <div class="flex items-center space-x-4">
+                                                                <div class="w-10 h-10 ${bill.paid ? 'bg-green-100' : 'bg-red-100'} rounded-full flex items-center justify-center">
+                                                                    <svg class="w-6 h-6 ${bill.paid ? 'text-green-600' : 'text-red-600'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        ${bill.paid ? 
+                                                                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />' :
+                                                                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />'
+                                                                        }
+                                                                    </svg>
+                                                                </div>
+                                                                <div>
+                                                                    <p class="font-medium">${bill.name}</p>
+                                                                    <p class="text-sm text-gray-600">
+                                                                        Due: ${new Date(bill.dueDate).toLocaleDateString()} • ${bill.category}
+                                                                    </p>
+                                                                    ${bill.isSplit ? `
+                                                                        <p class="text-sm text-purple-600 flex items-center mt-1">
+                                                                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                                                            </svg>
+                                                                            Split with ${bill.splitWith} (You: ${bill.userShare}%)
+                                                                        </p>
+                                                                    ` : ''}
+                                                                </div>
+                                                            </div>
+                                                            <div class="text-right">
+                                                                <p class="text-lg font-bold">
+                                                                    $${bill.userShare ? (bill.amount * bill.userShare / 100).toFixed(2) : bill.amount.toFixed(2)}
+                                                                </p>
+                                                                ${bill.isSplit ? `
+                                                                    <p class="text-xs text-gray-500">Total: $${bill.amount.toFixed(2)}</p>
+                                                                ` : ''}
+                                                            </div>
+                                                        </div>
+                                                        ${!bill.paid ? `
+                                                            <button data-action="mark-paid" data-bill-id="${bill.id}" 
+                                                                class="w-full mt-3 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">
+                                                                Mark as Paid
+                                                            </button>
+                                                        ` : `
+                                                            <div class="mt-3 text-center text-green-600 font-medium">
+                                                                ✓ Paid on ${new Date(bill.paidDate).toLocaleDateString()}
+                                                            </div>
+                                                        `}
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        `}
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            ${this.activeTab === 'history' ? `
+                                <!-- History Tab -->
+                                <div class="bg-white rounded-xl shadow-md fade-in">
+                                    <div class="p-6 border-b">
+                                        <h2 class="text-xl font-bold">Transaction History</h2>
+                                    </div>
+                                    <div class="p-6">
+                                        <div class="text-center py-12">
+                                            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p class="text-gray-500">Transaction history coming soon</p>
+                                            <p class="text-sm text-gray-400 mt-2">Your payment history will appear here</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Helper function for split bill toggle
+        function toggleSplitOptions(checkbox) {
+            const splitOptions = document.getElementById('split-options');
+            splitOptions.style.display = checkbox.checked ? 'block' : 'none';
+        }
+
+        // Initialize app
+        const app = new SmartBudgetApp();
+
+        // Register service worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('data:text/javascript,' + encodeURIComponent(`
+                self.addEventListener('install', e => {
+                    self.skipWaiting();
+                });
+                self.addEventListener('activate', e => {
+                    e.waitUntil(clients.claim());
+                });
+                self.addEventListener('fetch', e => {
+                    e.respondWith(fetch(e.request));
+                });
+            `));
+        }
+    </script>
+</body>
+</html>
