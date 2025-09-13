@@ -1455,6 +1455,25 @@
         // Initialize app and make it globally accessible
         const app = new SmartBudgetApp();
         window.app = app; // Make globally accessible for debugging
+        
+        // Add test function to debug session timeout
+        window.testSessionTimeout = () => {
+            console.log('=== SESSION TIMEOUT DEBUG ===');
+            console.log('Current user:', app.currentUser);
+            console.log('Current view:', app.currentView);
+            console.log('Last activity:', new Date(app.lastActivity));
+            console.log('Session timeout exists:', !!app.sessionTimeout);
+            console.log('Warning timeout exists:', !!app.sessionWarningTimeout);
+            console.log('Warning shown:', app.sessionWarningShown);
+            
+            // Force start session monitoring for testing
+            if (app.currentUser) {
+                console.log('Manually starting session monitoring...');
+                app.startSessionMonitoring();
+            } else {
+                console.log('No user logged in - cannot start monitoring');
+            }
+        };
     </script>
 </body>
 </html>
