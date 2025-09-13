@@ -1452,8 +1452,9 @@
             });
         }
 
-        // Initialize app
+        // Initialize app and make it globally accessible
         const app = new SmartBudgetApp();
+        window.app = app; // Make globally accessible for debugging
     </script>
 </body>
 </html>
