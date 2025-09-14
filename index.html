@@ -972,7 +972,7 @@
 
             // Real-time subscriptions
             subscribeToUserData(userId, callback) {
-                const subscription = supabase
+                const subscription = supabaseClient
                     .channel('user-data')
                     .on('postgres_changes', 
                         { event: '*', schema: 'public', table: 'bills', filter: `user_id=eq.${userId}` },
