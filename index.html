@@ -1483,89 +1483,9 @@
                     '</div>';
             }
 
-            async getBillPaymentStatus(bill) {
-                if (!bill.is_shared) {
-                    return {
-                        status: bill.paid ? 'paid' : 'unpaid',
-                        userPaid: bill.paid,
-                        otherUserPaid: null,
-                        message: bill.paid ? 'Paid' : 'Unpaid'
-                    };
-                }
-
-                // For shared bills, check both parties' payment status
-                const { data: billShares, error } = await supabase
-                    .from('bill_shares')
-                    .select('user_id, paid')
-                    .eq('bill_id', bill.id);
-
-                if (error) {
-                    console.error('Error getting bill shares:', error);
-                    return { status: 'error', message: 'Error loading payment status' };
-                }
-
-                const currentUserShare = billShares.find(share => share.user_id === this.currentUser.id);
-                const otherUserShare = billShares.find(share => share.user_id !== this.currentUser.id);
-                
-                const userPaid = currentUserShare?.paid || false;
-                const otherUserPaid = otherUserShare?.paid || false;
-                const billCreatorPaid = bill.paid || false;
-
-                // Determine the payment status and message
-                if (bill.user_id === this.currentUser.id) {
-                    // Current user is the bill creator
-                    if (billCreatorPaid && otherUserPaid) {
-                        return {
-                            status: 'fully_paid',
-                            userPaid: true,
-                            otherUserPaid: true,
-                            message: 'Fully paid'
-                        };
-                    } else if (billCreatorPaid && !otherUserPaid) {
-                        return {
-                            status: 'waiting_reimbursement',
-                            userPaid: true,
-                            otherUserPaid: false,
-                            message: 'Waiting for reimbursement'
-                        };
-                    } else {
-                        return {
-                            status: 'unpaid',
-                            userPaid: false,
-                            otherUserPaid: false,
-                            message: 'Pay vendor first'
-                        };
-                    }
-                } else {
-                    // Current user is the bill recipient
-                    if (billCreatorPaid && userPaid) {
-                        return {
-                            status: 'fully_paid',
-                            userPaid: true,
-                            otherUserPaid: true,
-                            message: 'Fully paid'
-                        };
-                    } else if (billCreatorPaid && !userPaid) {
-                        return {
-                            status: 'need_to_reimburse',
-                            userPaid: false,
-                            otherUserPaid: true,
-                            message: 'Need to reimburse'
-                        };
-                    } else if (!billCreatorPaid) {
-                        return {
-                            status: 'waiting_creator',
-                            userPaid: false,
-                            otherUserPaid: false,
-                            message: 'Waiting for bill creator'
-                        };
-                    }
-                }
-            }
-
             renderBillsTab(bills) {
                 let billsContent = '';
-
+                
                 if (bills.length === 0) {
                     billsContent = '<div class="text-center py-12">' +
                         '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
@@ -1575,370 +1495,57 @@
                         '<p class="text-sm text-gray-400 mt-2">Add your bills to track due dates and payments</p>' +
                         '</div>';
                 } else {
-                    // We need to process bills asynchronously to get payment status
-                    setTimeout(async () => {
-                        let billsList = '';
-                        for (const bill of bills) {
-                            const isShared = bill.is_shared || false;
-                            const userAmount = bill.user_share || bill.amount;
-                            const paymentStatus = await this.getBillPaymentStatus(bill);
-
-                            let statusIcon, statusColor, actionButton, statusMessage;
-
-                            switch (paymentStatus.status) {
-                                case 'fully_paid':
-                                    statusIcon = '<svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
-                                    statusColor = 'bg-green-100';
-                                    statusMessage = '<div class="mt-3 text-center text-green-600 font-medium">&#x2713; ' + paymentStatus.message + '</div>';
-                                    actionButton = '';
-                                    break;
-
-                                case 'waiting_reimbursement':
-                                    statusIcon = '<svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
-                                    statusColor = 'bg-yellow-100';
-                                    statusMessage = '<div class="mt-3 text-center text-yellow-600 font-medium">&#x23F3; ' + paymentStatus.message + '</div>';
-                                    actionButton = '';
-                                    break;
-
-                                case 'need_to_reimburse':
-                                    statusIcon = '<svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
-                                    statusColor = 'bg-orange-100';
-                                    statusMessage = '';
-                                    actionButton = '<button data-action="mark-paid" data-bill-id="' + bill.id + '" data-shared="true" class="w-full mt-3 btn btn-warning">Reimburse Now</button>';
-                                    break;
-
-                                case 'waiting_creator':
-                                    statusIcon = '<svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
-                                    statusColor = 'bg-gray-100';
-                                    statusMessage = '<div class="mt-3 text-center text-gray-600 font-medium">&#x23F3; ' + paymentStatus.message + '</div>';
-                                    actionButton = '';
-                                    break;
-
-                                default: // unpaid
-                                    statusIcon = '<svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
-                                    statusColor = 'bg-red-100';
-                                    statusMessage = '';
-                                    actionButton = '<button data-action="mark-paid" data-bill-id="' + bill.id + '" data-shared="' + isShared + '" class="w-full mt-3 btn btn-success">' + (isShared ? 'Pay Vendor' : 'Mark as Paid') + '</button>';
-                                    break;
-                            }
-
-                            const indicator = isShared ?
-                                '<span class="shared-indicator">Shared</span>' :
-                                '<span class="personal-indicator">Personal</span>';
-
-                            const totalInfo = (isShared && bill.amount !== userAmount) ?
-                                '<p class="text-xs text-gray-500">Total: $' + bill.amount.toFixed(2) + '</p>' : '';
-
-                            billsList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
-                                '<div class="flex items-center justify-between mb-3">' +
-                                '<div class="flex items-center space-x-4 flex-1">' +
-                                '<div class="w-10 h-10 ' + statusColor + ' rounded-full flex items-center justify-center">' +
-                                statusIcon +
-                                '</div>' +
-                                '<div class="flex-1">' +
-                                '<div class="flex items-center space-x-2 mb-1">' +
-                                '<p class="font-medium">' + bill.name + '</p>' +
-                                indicator +
-                                '</div>' +
-                                '<p class="text-sm text-gray-600">Due: ' + new Date(bill.due_date).toLocaleDateString() + ' • ' + bill.category + '</p>' +
-                                '</div>' +
-                                '</div>' +
-                                '<div class="flex items-center space-x-3">' +
-                                '<div class="text-right">' +
-                                '<p class="text-lg font-bold">$' + userAmount.toFixed(2) + '</p>' +
-                                totalInfo +
-                                '</div>' +
-                                '<button data-action="delete-bill" data-bill-id="' + bill.id + '" class="btn p-2 text-red-600 hover:text-red-800">' +
-                                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
-                                '</svg>' +
-                                '</button>' +
-                                '</div>' +
-                                '</div>' +
-                                (statusMessage || actionButton) +
-                                '</div>';
-                        }
-
-                        const billsContainer = document.querySelector('#bills-content');
-                        if (billsContainer) {
-                            billsContainer.innerHTML = '<div class="space-y-3">' + billsList + '</div>';
-                        }
-                    }, 100);
-
-                    billsContent = '<div id="bills-content"><div class="text-center py-8">Loading bills...</div></div>';
-                }
-
-                return '<div class="card fade-in">' +
-                    '<div class="p-6 border-b flex justify-between items-center">' +
-                    '<h2 class="text-xl font-bold">Bills & Payments</h2>' +
-                    '<button data-action="show-modal" data-modal="bill" class="btn btn-primary">' +
-                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />' +
-                    '</svg>' +
-                    '<span>Add Bill</span>' +
-                    '</button>' +
-                    '</div>' +
-                    '<div class="p-6">' + billsContent + '</div>' +
-                    '</div>';
-            }
-
-            renderConnectionsTab() {
-                // This will be populated after render, since it needs async data
-                setTimeout(async () => {
-                    const connections = await storage.getUserConnections();
-                    const bills = await storage.getUserBills();
-                    const sharedBills = bills.filter(bill => bill.is_shared);
-                    
-                    let connectionsHTML = '';
-                    
-                    if (connections.length === 0) {
-                        connectionsHTML = '<div class="text-center py-12">' +
-                            '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
-                            '</svg>' +
-                            '<p class="text-gray-500">No connections yet</p>' +
-                            '<p class="text-sm text-gray-400 mt-2">Connect with family or roommates to share bills</p>' +
-                            '</div>';
-                    } else {
-                        let connectionCards = '';
-                        for (const connection of connections) {
-                            const connectionSharedBills = sharedBills.filter(bill => 
-                                bill.shared_with && bill.shared_with.includes(connection.id)
-                            );
-                            
-                            let billsListHTML = '';
-                            if (connectionSharedBills.length > 0) {
-                                for (const bill of connectionSharedBills.slice(0, 3)) {
-                                    billsListHTML += '<div class="flex justify-between text-xs">' +
-                                        '<span>' + bill.name + '</span>' +
-                                        '<span class="font-medium">$' + (bill.user_share || bill.amount).toFixed(2) + '</span>' +
-                                        '</div>';
-                                }
-                                
-                                if (connectionSharedBills.length > 3) {
-                                    billsListHTML += '<div class="text-xs text-gray-500">+' + (connectionSharedBills.length - 3) + ' more bills</div>';
-                                }
-                            }
-                            
-                            connectionCards += '<div class="bg-gray-50 rounded-lg p-4">' +
-                                '<div class="flex items-center space-x-3 mb-3">' +
-                                '<div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">' +
-                                '<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
-                                '</svg>' +
-                                '</div>' +
-                                '<div class="flex-1">' +
-                                '<p class="font-medium">' + connection.name + '</p>' +
-                                '<p class="text-sm text-gray-600">' + connection.email + '</p>' +
-                                '</div>' +
-                                '<span class="connection-badge connection-active">Connected</span>' +
-                                '</div>' +
-                                '<div class="text-sm text-gray-600 mb-2">' +
-                                '<p><strong>' + connectionSharedBills.length + '</strong> shared bills</p>' +
-                                '</div>' +
-                                (billsListHTML ? '<div class="space-y-1 mb-3">' + billsListHTML + '</div>' : '') +
-                                '<button data-action="remove-connection" data-connection-id="' + connection.connection_id + '" class="w-full btn btn-danger text-sm py-2">Remove Connection</button>' +
-                                '</div>';
-                        }
-                        connectionsHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">' + connectionCards + '</div>';
-                    }
-                    
-                    const connectionsContent = '<div class="space-y-6 fade-in">' +
-                        '<div class="card">' +
-                        '<div class="p-6 border-b flex justify-between items-center">' +
-                        '<h2 class="text-xl font-bold">Connections</h2>' +
-                        '<button data-action="show-modal" data-modal="connections" class="btn btn-primary">' +
-                        '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
-                        '</svg>' +
-                        '<span>Manage Connections</span>' +
-                        '</button>' +
-                        '</div>' +
-                        '<div class="p-6">' + connectionsHTML + '</div>' +
-                        '</div>' +
-                        '</div>';
-                    
-                    const connectionsContainer = document.querySelector('#connections-content');
-                    if (connectionsContainer) {
-                        connectionsContainer.innerHTML = connectionsContent;
-                    }
-                }, 100);
-                
-                return '<div id="connections-content" class="space-y-6"><div class="text-center py-8">Loading connections...</div></div>';
-            }
-        }
-
-        // Helper functions for dynamic UI
-        function toggleSplitType(shareWithValue) {
-            const splitOptions = document.getElementById('split-options');
-            if (splitOptions) {
-                splitOptions.style.display = shareWithValue ? 'block' : 'none';
-            }
-        }
-
-        // Handle custom split radio change
-        document.addEventListener('change', (e) => {
-            if (e.target.name === 'splitType') {
-                const customSplit = document.getElementById('custom-split');
-                if (customSplit) {
-                    customSplit.style.display = e.target.value === 'custom' ? 'block' : 'none';
-                }
-            }
-        });
-
-        // Initialize app
-        const app = new SmartBudgetApp();
-    </script>
-</body>
-</html> + bill.amount.toFixed(2) + '</p>' : '';
-                            
-                            billsList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
-                                '<div class="flex items-center justify-between mb-3">' +
-                                '<div class="flex items-center space-x-4 flex-1">' +
-                                '<div class="w-10 h-10 ' + statusColor + ' rounded-full flex items-center justify-center">' +
-                                statusIcon +
-                                '</div>' +
-                                '<div class="flex-1">' +
-                                '<div class="flex items-center space-x-2 mb-1">' +
-                                '<p class="font-medium">' + bill.name + '</p>' +
-                                indicator +
-                                '</div>' +
-                                '<p class="text-sm text-gray-600">Due: ' + new Date(bill.due_date).toLocaleDateString() + ' • ' + bill.category + '</p>' +
-                                '</div>' +
-                                '</div>' +
-                                '<div class="flex items-center space-x-3">' +
-                                '<div class="text-right">' +
-                                '<p class="text-lg font-bold">
-
-            renderConnectionsTab() {
-                // This will be populated after render, since it needs async data
-                setTimeout(async () => {
-                    const connections = await storage.getUserConnections();
-                    const bills = await storage.getUserBills();
-                    const sharedBills = bills.filter(bill => bill.is_shared);
-                    
-                    let connectionsHTML = '';
-                    
-                    if (connections.length === 0) {
-                        connectionsHTML = '<div class="text-center py-12">' +
-                            '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
-                            '</svg>' +
-                            '<p class="text-gray-500">No connections yet</p>' +
-                            '<p class="text-sm text-gray-400 mt-2">Connect with family or roommates to share bills</p>' +
-                            '</div>';
-                    } else {
-                        let connectionCards = '';
-                        for (const connection of connections) {
-                            const connectionSharedBills = sharedBills.filter(bill => 
-                                bill.shared_with && bill.shared_with.includes(connection.id)
-                            );
-                            
-                            let billsListHTML = '';
-                            if (connectionSharedBills.length > 0) {
-                                for (const bill of connectionSharedBills.slice(0, 3)) {
-                                    billsListHTML += '<div class="flex justify-between text-xs">' +
-                                        '<span>' + bill.name + '</span>' +
-                                        '<span class="font-medium">$' + (bill.user_share || bill.amount).toFixed(2) + '</span>' +
-                                        '</div>';
-                                }
-                                
-                                if (connectionSharedBills.length > 3) {
-                                    billsListHTML += '<div class="text-xs text-gray-500">+' + (connectionSharedBills.length - 3) + ' more bills</div>';
-                                }
-                            }
-                            
-                            connectionCards += '<div class="bg-gray-50 rounded-lg p-4">' +
-                                '<div class="flex items-center space-x-3 mb-3">' +
-                                '<div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">' +
-                                '<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
-                                '</svg>' +
-                                '</div>' +
-                                '<div class="flex-1">' +
-                                '<p class="font-medium">' + connection.name + '</p>' +
-                                '<p class="text-sm text-gray-600">' + connection.email + '</p>' +
-                                '</div>' +
-                                '<span class="connection-badge connection-active">Connected</span>' +
-                                '</div>' +
-                                '<div class="text-sm text-gray-600 mb-2">' +
-                                '<p><strong>' + connectionSharedBills.length + '</strong> shared bills</p>' +
-                                '</div>' +
-                                (billsListHTML ? '<div class="space-y-1 mb-3">' + billsListHTML + '</div>' : '') +
-                                '<button data-action="remove-connection" data-connection-id="' + connection.connection_id + '" class="w-full btn btn-danger text-sm py-2">Remove Connection</button>' +
-                                '</div>';
-                        }
-                        connectionsHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">' + connectionCards + '</div>';
-                    }
-                    
-                    const connectionsContent = '<div class="space-y-6 fade-in">' +
-                        '<div class="card">' +
-                        '<div class="p-6 border-b flex justify-between items-center">' +
-                        '<h2 class="text-xl font-bold">Connections</h2>' +
-                        '<button data-action="show-modal" data-modal="connections" class="btn btn-primary">' +
-                        '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
-                        '</svg>' +
-                        '<span>Manage Connections</span>' +
-                        '</button>' +
-                        '</div>' +
-                        '<div class="p-6">' + connectionsHTML + '</div>' +
-                        '</div>' +
-                        '</div>';
-                    
-                    const connectionsContainer = document.querySelector('#connections-content');
-                    if (connectionsContainer) {
-                        connectionsContainer.innerHTML = connectionsContent;
-                    }
-                }, 100);
-                
-                return '<div id="connections-content" class="space-y-6"><div class="text-center py-8">Loading connections...</div></div>';
-            }
-        }
-
-        // Helper functions for dynamic UI
-        function toggleSplitType(shareWithValue) {
-            const splitOptions = document.getElementById('split-options');
-            if (splitOptions) {
-                splitOptions.style.display = shareWithValue ? 'block' : 'none';
-            }
-        }
-
-        // Handle custom split radio change
-        document.addEventListener('change', (e) => {
-            if (e.target.name === 'splitType') {
-                const customSplit = document.getElementById('custom-split');
-                if (customSplit) {
-                    customSplit.style.display = e.target.value === 'custom' ? 'block' : 'none';
-                }
-            }
-        });
-
-        // Initialize app
-        const app = new SmartBudgetApp();
-    </script>
-</body>
-</html> + userAmount.toFixed(2) + '</p>' +
-                                totalInfo +
-                                '</div>' +
-                                '<button data-action="delete-bill" data-bill-id="' + bill.id + '" class="btn p-2 text-red-600 hover:text-red-800">' +
-                                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
-                                '</svg>' +
-                                '</button>' +
-                                '</div>' +
-                                '</div>' +
-                                (statusMessage || actionButton) +
-                                '</div>';
-                        }
+                    let billsList = '';
+                    for (const bill of bills) {
+                        const isShared = bill.is_shared || false;
+                        const userAmount = bill.user_share || bill.amount;
+                        const isPaid = bill.user_paid !== undefined ? bill.user_paid : bill.paid;
                         
-                        const billsContainer = document.querySelector('#bills-content');
-                        if (billsContainer) {
-                            billsContainer.innerHTML = '<div class="space-y-3">' + billsList + '</div>';
-                        }
-                    }, 100);
-                    
-                    billsContent = '<div id="bills-content"><div class="text-center py-8">Loading bills...</div></div>';
+                        const statusIcon = isPaid ? 
+                            '<svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>' :
+                            '<svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+                        
+                        const indicator = isShared ? 
+                            '<span class="shared-indicator">Shared</span>' : 
+                            '<span class="personal-indicator">Personal</span>';
+                        
+                        const totalInfo = (isShared && bill.amount !== userAmount) ? 
+                            '<p class="text-xs text-gray-500">Total: $' + bill.amount.toFixed(2) + '</p>' : '';
+                        
+                        const actionButton = !isPaid ? 
+                            '<button data-action="mark-paid" data-bill-id="' + bill.id + '" data-shared="' + isShared + '" class="w-full mt-3 btn btn-success">Mark as Paid</button>' :
+                            '<div class="mt-3 text-center text-green-600 font-medium">✓ Paid' + (bill.paid_date ? ' on ' + new Date(bill.paid_date).toLocaleDateString() : '') + '</div>';
+                        
+                        billsList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
+                            '<div class="flex items-center justify-between mb-3">' +
+                            '<div class="flex items-center space-x-4 flex-1">' +
+                            '<div class="w-10 h-10 ' + (isPaid ? 'bg-green-100' : 'bg-red-100') + ' rounded-full flex items-center justify-center">' +
+                            statusIcon +
+                            '</div>' +
+                            '<div class="flex-1">' +
+                            '<div class="flex items-center space-x-2 mb-1">' +
+                            '<p class="font-medium">' + bill.name + '</p>' +
+                            indicator +
+                            '</div>' +
+                            '<p class="text-sm text-gray-600">Due: ' + new Date(bill.due_date).toLocaleDateString() + ' • ' + bill.category + '</p>' +
+                            '</div>' +
+                            '</div>' +
+                            '<div class="flex items-center space-x-3">' +
+                            '<div class="text-right">' +
+                            '<p class="text-lg font-bold">$' + userAmount.toFixed(2) + '</p>' +
+                            totalInfo +
+                            '</div>' +
+                            '<button data-action="delete-bill" data-bill-id="' + bill.id + '" class="btn p-2 text-red-600 hover:text-red-800">' +
+                            '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
+                            '</svg>' +
+                            '</button>' +
+                            '</div>' +
+                            '</div>' +
+                            actionButton +
+                            '</div>';
+                    }
+                    billsContent = '<div class="space-y-3">' + billsList + '</div>';
                 }
                 
                 return '<div class="card fade-in">' +
