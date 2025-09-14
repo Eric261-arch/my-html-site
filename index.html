@@ -1303,7 +1303,7 @@
 
                 const success = await storage.acceptInvitation(invitation);
                 if (success) {
-                    this.showSuccess(`Connected with ${invitation.users?.name || 'user'}!`);
+                    this.showSuccess(`Connected with ${invitation.profiles?.name || 'user'}!`);
                     this.closeModal();
                     this.render();
                 } else {
