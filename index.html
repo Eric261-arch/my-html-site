@@ -429,7 +429,7 @@
             async createUserProfile(userId, profileData) {
                 try {
                     const { data, error } = await supabaseClient
-                        .from('users')
+                        .from('profiles')
                         .insert([{
                             id: userId,
                             ...profileData,
@@ -448,7 +448,7 @@
             async getUserProfile(userId) {
                 try {
                     const { data, error } = await supabaseClient
-                        .from('users')
+                        .from('profiles')
                         .select('*')
                         .eq('id', userId)
                         .single();
@@ -600,7 +600,7 @@
                             bill_shares (
                                 user_id,
                                 amount,
-                                users (name, email)
+                                profiles (name, email)
                             )
                         `)
                         .eq('user_id', user.id)
@@ -614,11 +614,11 @@
                         .select(`
                             bills (
                                 *,
-                                users (name, email),
+                                profiles (name, email),
                                 bill_shares (
                                     user_id,
                                     amount,
-                                    users (name, email)
+                                    profiles (name, email)
                                 )
                             ),
                             amount
@@ -722,7 +722,7 @@
                 try {
                     const { data, error } = await supabaseClient
                         .from('invitations')
-                        .select('*, users!invitations_from_user_id_fkey(name, email)')
+                        .select('*, profiles!invitations_from_user_id_fkey(name, email)')
                         .eq('code', code.toUpperCase())
                         .eq('used', false)
                         .gt('expires_at', new Date().toISOString())
@@ -811,7 +811,7 @@
                         .from('connections')
                         .select(`
                             to_user_id,
-                            users!connections_to_user_id_fkey (
+                            profiles!connections_to_user_id_fkey (
                                 id,
                                 name,
                                 email
@@ -820,7 +820,7 @@
                         .eq('from_user_id', user.id);
 
                     if (error) throw error;
-                    return (data || []).map(conn => conn.users);
+                    return (data || []).map(conn => conn.profiles);
                 } catch (error) {
                     return await this.handleError(error, 'getUserConnections') || [];
                 }
