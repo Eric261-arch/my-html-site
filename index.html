@@ -722,7 +722,7 @@
                 try {
                     const { data, error } = await supabaseClient
                         .from('invitations')
-                        .select('*, profiles!invitations_from_user_id_fkey(name, email)')
+                        .select('*, profiles!invitations_from_profiles_id_fkey(name, email)')
                         .eq('code', code.toUpperCase())
                         .eq('used', false)
                         .gt('expires_at', new Date().toISOString())
