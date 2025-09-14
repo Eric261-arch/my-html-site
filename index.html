@@ -1176,10 +1176,17 @@
                         case 'signup':
                             const signupResult = await storage.signUp(data.email, data.password, data.name);
                             if (signupResult.user) {
+                                // Wait a moment for profile creation to complete
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                                
                                 this.currentProfile = await storage.getProfile(signupResult.user.id);
-                                this.currentView = 'app';
-                                this.setupRealtimeSubscription();
-                                this.render();
+                                if (this.currentProfile) {
+                                    this.currentView = 'app';
+                                    this.setupRealtimeSubscription();
+                                    this.render();
+                                } else {
+                                    this.showError('Account created but profile setup failed. Please try logging in.');
+                                }
                             } else {
                                 this.showError('Failed to create account. Please try again.');
                             }
