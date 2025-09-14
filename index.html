@@ -370,9 +370,9 @@
 
                     if (error) throw error;
 
-                    // Create user profile
+                    // Create profile
                     if (data.user) {
-                        await this.createUserProfile(data.user.id, {
+                        await this.createProfile(data.user.id, {
                             email,
                             name,
                             credit_score: Math.floor(Math.random() * 200) + 600
@@ -426,12 +426,12 @@
                 }
             }
 
-            async createUserProfile(userId, profileData) {
+            async createProfile(profileId, profileData) {
                 try {
                     const { data, error } = await supabaseClient
                         .from('profiles')
                         .insert([{
-                            id: userId,
+                            id: profileId,
                             ...profileData,
                             created_at: new Date().toISOString()
                         }])
@@ -441,36 +441,36 @@
                     if (error) throw error;
                     return data;
                 } catch (error) {
-                    return await this.handleError(error, 'createUserProfile');
+                    return await this.handleError(error, 'createProfile');
                 }
             }
 
-            async getUserProfile(userId) {
+            async getProfile(profileId) {
                 try {
                     const { data, error } = await supabaseClient
                         .from('profiles')
                         .select('*')
-                        .eq('id', userId)
+                        .eq('id', profileId)
                         .single();
 
                     if (error) throw error;
                     return data;
                 } catch (error) {
-                    return await this.handleError(error, 'getUserProfile');
+                    return await this.handleError(error, 'getProfile');
                 }
             }
 
             // Income methods
             async addIncome(incomeData) {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     const { data, error } = await supabaseClient
                         .from('incomes')
                         .insert([{
                             ...incomeData,
-                            user_id: user.id,
+                            user_id: currentUser.id,
                             created_at: new Date().toISOString()
                         }])
                         .select()
@@ -485,13 +485,13 @@
 
             async getUserIncomes() {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     const { data, error } = await supabaseClient
                         .from('incomes')
                         .select('*')
-                        .eq('user_id', user.id)
+                        .eq('user_id', currentUser.id)
                         .order('created_at', { ascending: false });
 
                     if (error) throw error;
@@ -538,14 +538,14 @@
             // Bill methods
             async addBill(billData) {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     const { data, error } = await supabaseClient
                         .from('bills')
                         .insert([{
                             ...billData,
-                            user_id: user.id,
+                            user_id: currentUser.id,
                             created_at: new Date().toISOString(),
                             paid: false
                         }])
@@ -568,9 +568,9 @@
 
             async createBillShares(billId, splits) {
                 try {
-                    const shares = Object.entries(splits).map(([userId, amount]) => ({
+                    const shares = Object.entries(splits).map(([profileId, amount]) => ({
                         bill_id: billId,
-                        user_id: userId,
+                        user_id: profileId,
                         amount: amount,
                         created_at: new Date().toISOString()
                     }));
@@ -589,10 +589,10 @@
 
             async getUserBills() {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
-                    // Get bills owned by user
+                    // Get bills owned by current user
                     const { data: ownedBills, error: ownedError } = await supabaseClient
                         .from('bills')
                         .select(`
@@ -603,12 +603,12 @@
                                 profiles (name, email)
                             )
                         `)
-                        .eq('user_id', user.id)
+                        .eq('user_id', currentUser.id)
                         .order('created_at', { ascending: false });
 
                     if (ownedError) throw ownedError;
 
-                    // Get bills shared with user
+                    // Get bills shared with current user
                     const { data: sharedBills, error: sharedError } = await supabaseClient
                         .from('bill_shares')
                         .select(`
@@ -623,7 +623,7 @@
                             ),
                             amount
                         `)
-                        .eq('user_id', user.id);
+                        .eq('user_id', currentUser.id);
 
                     if (sharedError) throw sharedError;
 
@@ -696,14 +696,14 @@
 
             async createInvitation(inviteCode) {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     const { data, error } = await supabaseClient
                         .from('invitations')
                         .insert([{
                             code: inviteCode,
-                            from_user_id: user.id,
+                            from_user_id: currentUser.id,
                             expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                             used: false,
                             created_at: new Date().toISOString()
@@ -722,7 +722,7 @@
                 try {
                     const { data, error } = await supabaseClient
                         .from('invitations')
-                        .select('*, profiles!invitations_from_profiles_id_fkey(name, email)')
+                        .select('*, profiles!invitations_from_user_id_fkey(name, email)')
                         .eq('code', code.toUpperCase())
                         .eq('used', false)
                         .gt('expires_at', new Date().toISOString())
@@ -737,11 +737,11 @@
 
             async acceptInvitation(invitation) {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     // Check if already connected
-                    const existingConnection = await this.checkConnection(user.id, invitation.from_user_id);
+                    const existingConnection = await this.checkConnection(currentUser.id, invitation.from_user_id);
                     if (existingConnection) {
                         throw new Error('Already connected to this user');
                     }
@@ -751,14 +751,14 @@
                         .from('invitations')
                         .update({
                             used: true,
-                            to_user_id: user.id,
+                            to_user_id: currentUser.id,
                             used_at: new Date().toISOString()
                         })
                         .eq('id', invitation.id);
 
                     // Create bidirectional connection
-                    await this.createConnection(invitation.from_user_id, user.id);
-                    await this.createConnection(user.id, invitation.from_user_id);
+                    await this.createConnection(invitation.from_user_id, currentUser.id);
+                    await this.createConnection(currentUser.id, invitation.from_user_id);
 
                     return true;
                 } catch (error) {
@@ -767,13 +767,13 @@
                 }
             }
 
-            async createConnection(fromUserId, toUserId) {
+            async createConnection(fromProfileId, toProfileId) {
                 try {
                     const { data, error } = await supabaseClient
                         .from('connections')
                         .insert([{
-                            from_user_id: fromUserId,
-                            to_user_id: toUserId,
+                            from_user_id: fromProfileId,
+                            to_user_id: toProfileId,
                             created_at: new Date().toISOString()
                         }])
                         .select()
@@ -786,13 +786,13 @@
                 }
             }
 
-            async checkConnection(userId1, userId2) {
+            async checkConnection(profileId1, profileId2) {
                 try {
                     const { data, error } = await supabaseClient
                         .from('connections')
                         .select('*')
-                        .eq('from_user_id', userId1)
-                        .eq('to_user_id', userId2)
+                        .eq('from_user_id', profileId1)
+                        .eq('to_user_id', profileId2)
                         .single();
 
                     if (error && error.code !== 'PGRST116') throw error;
@@ -804,8 +804,8 @@
 
             async getUserConnections() {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     const { data, error } = await supabaseClient
                         .from('connections')
@@ -817,7 +817,7 @@
                                 email
                             )
                         `)
-                        .eq('from_user_id', user.id);
+                        .eq('from_user_id', currentUser.id);
 
                     if (error) throw error;
                     return (data || []).map(conn => conn.profiles);
@@ -826,23 +826,23 @@
                 }
             }
 
-            async removeConnection(connectedUserId) {
+            async removeConnection(connectedProfileId) {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     // Remove bidirectional connections
                     await supabaseClient
                         .from('connections')
                         .delete()
-                        .eq('from_user_id', user.id)
-                        .eq('to_user_id', connectedUserId);
+                        .eq('from_user_id', currentUser.id)
+                        .eq('to_user_id', connectedProfileId);
 
                     await supabaseClient
                         .from('connections')
                         .delete()
-                        .eq('from_user_id', connectedUserId)
-                        .eq('to_user_id', user.id);
+                        .eq('from_user_id', connectedProfileId)
+                        .eq('to_user_id', currentUser.id);
 
                     return true;
                 } catch (error) {
@@ -854,13 +854,13 @@
             // Notification methods
             async getUserNotifications() {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     const { data, error } = await supabaseClient
                         .from('notifications')
                         .select('*')
-                        .eq('user_id', user.id)
+                        .eq('user_id', currentUser.id)
                         .eq('read', false)
                         .order('created_at', { ascending: false });
 
@@ -888,8 +888,8 @@
 
             async checkUpcomingBills() {
                 try {
-                    const user = await this.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
+                    const currentUser = await this.getCurrentUser();
+                    if (!currentUser) throw new Error('User not authenticated');
 
                     const bills = await this.getUserBills();
                     const today = new Date();
@@ -901,7 +901,7 @@
 
                             if (daysUntil <= 3 && daysUntil >= 0) {
                                 await this.createNotification(
-                                    user.id,
+                                    currentUser.id,
                                     'bill_reminder',
                                     `${bill.name} due in ${daysUntil} days`,
                                     { bill_id: bill.id }
@@ -914,13 +914,13 @@
                 }
             }
 
-            async createNotification(userId, type, message, metadata = {}) {
+            async createNotification(profileId, type, message, metadata = {}) {
                 try {
                     // Check if notification already exists
                     const { data: existing } = await supabaseClient
                         .from('notifications')
                         .select('id')
-                        .eq('user_id', userId)
+                        .eq('user_id', profileId)
                         .eq('type', type)
                         .eq('metadata->bill_id', metadata.bill_id)
                         .eq('read', false);
@@ -930,7 +930,7 @@
                     const { data, error } = await supabaseClient
                         .from('notifications')
                         .insert([{
-                            user_id: userId,
+                            user_id: profileId,
                             type,
                             message,
                             metadata,
@@ -971,19 +971,19 @@
             }
 
             // Real-time subscriptions
-            subscribeToUserData(userId, callback) {
+            subscribeToProfileData(profileId, callback) {
                 const subscription = supabaseClient
-                    .channel('user-data')
+                    .channel('profile-data')
                     .on('postgres_changes', 
-                        { event: '*', schema: 'public', table: 'bills', filter: `user_id=eq.${userId}` },
+                        { event: '*', schema: 'public', table: 'bills', filter: `user_id=eq.${profileId}` },
                         callback
                     )
                     .on('postgres_changes',
-                        { event: '*', schema: 'public', table: 'incomes', filter: `user_id=eq.${userId}` },
+                        { event: '*', schema: 'public', table: 'incomes', filter: `user_id=eq.${profileId}` },
                         callback
                     )
                     .on('postgres_changes',
-                        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+                        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${profileId}` },
                         callback
                     )
                     .subscribe();
@@ -996,7 +996,7 @@
         // Enhanced Main App Class
         class SmartBudgetApp {
             constructor() {
-                this.currentUser = null;
+                this.currentProfile = null;
                 this.currentView = 'login';
                 this.activeTab = 'dashboard';
                 this.privateMode = false;
@@ -1007,10 +1007,10 @@
 
             async init() {
                 // Check for existing session
-                const user = await storage.getCurrentUser();
-                if (user) {
-                    this.currentUser = await storage.getUserProfile(user.id);
-                    if (this.currentUser) {
+                const currentUser = await storage.getCurrentUser();
+                if (currentUser) {
+                    this.currentProfile = await storage.getProfile(currentUser.id);
+                    if (this.currentProfile) {
                         this.currentView = 'app';
                         this.setupRealtimeSubscription();
                     }
@@ -1022,7 +1022,7 @@
 
                 // Check for notifications periodically
                 setInterval(() => {
-                    if (this.currentUser) {
+                    if (this.currentProfile) {
                         storage.checkUpcomingBills();
                     }
                 }, 60000);
@@ -1031,8 +1031,8 @@
             }
 
             setupRealtimeSubscription() {
-                if (this.currentUser) {
-                    storage.subscribeToUserData(this.currentUser.id, (payload) => {
+                if (this.currentProfile) {
+                    storage.subscribeToProfileData(this.currentProfile.id, (payload) => {
                         console.log('Real-time update:', payload);
                         this.render(); // Re-render on data changes
                     });
@@ -1047,7 +1047,7 @@
             }
 
             handleSessionExpired() {
-                this.currentUser = null;
+                this.currentProfile = null;
                 this.currentView = 'login';
                 this.render();
             }
@@ -1096,7 +1096,7 @@
                     switch (action) {
                         case 'logout':
                             await storage.signOut();
-                            this.currentUser = null;
+                            this.currentProfile = null;
                             this.currentView = 'login';
                             this.render();
                             break;
@@ -1164,7 +1164,7 @@
                         case 'login':
                             const loginResult = await storage.signIn(data.email, data.password);
                             if (loginResult.user) {
-                                this.currentUser = await storage.getUserProfile(loginResult.user.id);
+                                this.currentProfile = await storage.getProfile(loginResult.user.id);
                                 this.currentView = 'app';
                                 this.setupRealtimeSubscription();
                                 this.render();
@@ -1176,7 +1176,7 @@
                         case 'signup':
                             const signupResult = await storage.signUp(data.email, data.password, data.name);
                             if (signupResult.user) {
-                                this.currentUser = await storage.getUserProfile(signupResult.user.id);
+                                this.currentProfile = await storage.getProfile(signupResult.user.id);
                                 this.currentView = 'app';
                                 this.setupRealtimeSubscription();
                                 this.render();
@@ -1222,20 +1222,20 @@
 
                             // Handle shared bills
                             if (data.shareWith && data.shareWith !== '') {
-                                const userConnections = await storage.getUserConnections();
-                                const sharedUser = userConnections.find(c => c.id === data.shareWith);
+                                const profileConnections = await storage.getUserConnections();
+                                const sharedProfile = profileConnections.find(c => c.id === data.shareWith);
 
-                                if (sharedUser) {
+                                if (sharedProfile) {
                                     billData.sharedWith = [data.shareWith];
                                     billData.splits = {};
 
                                     if (data.splitType === 'equal') {
-                                        billData.splits[this.currentUser.id] = billData.amount / 2;
+                                        billData.splits[this.currentProfile.id] = billData.amount / 2;
                                         billData.splits[data.shareWith] = billData.amount / 2;
                                     } else if (data.splitType === 'custom') {
-                                        const userAmount = parseFloat(data.userAmount) || 0;
-                                        billData.splits[this.currentUser.id] = userAmount;
-                                        billData.splits[data.shareWith] = billData.amount - userAmount;
+                                        const profileAmount = parseFloat(data.userAmount) || 0;
+                                        billData.splits[this.currentProfile.id] = profileAmount;
+                                        billData.splits[data.shareWith] = billData.amount - profileAmount;
                                     }
                                 }
                             }
@@ -1259,7 +1259,7 @@
 
             async generateInvite() {
                 try {
-                    // First check if we have a current user
+                    // First check if we have a current profile
                     const currentUser = await storage.getCurrentUser();
                     console.log('Current user check:', currentUser);
                     
@@ -1684,7 +1684,7 @@
                                         </div>
                                         <div>
                                             <h1 class="text-xl font-bold">Smart Budget</h1>
-                                            <p class="text-sm opacity-90">Welcome, ${this.currentUser?.name || 'User'}</p>
+                                            <p class="text-sm opacity-90">Welcome, ${this.currentProfile?.name || 'User'}</p>
                                         </div>
                                     </div>
                                     <div class="flex items-center space-x-2">
@@ -1815,22 +1815,22 @@
                                     <div class="flex items-center space-x-6">
                                         <div class="text-center">
                                             <div class="text-4xl font-bold ${
-                                                (this.currentUser?.credit_score || 700) >= 750 ? 'text-green-600' : 
-                                                (this.currentUser?.credit_score || 700) >= 650 ? 'text-yellow-600' : 'text-red-600'
+                                                (this.currentProfile?.credit_score || 700) >= 750 ? 'text-green-600' : 
+                                                (this.currentProfile?.credit_score || 700) >= 650 ? 'text-yellow-600' : 'text-red-600'
                                             }">
-                                                ${this.currentUser?.credit_score || 700}
+                                                ${this.currentProfile?.credit_score || 700}
                                             </div>
                                             <p class="text-sm text-gray-600 mt-1">
-                                                ${(this.currentUser?.credit_score || 700) >= 750 ? 'Excellent' : 
-                                                 (this.currentUser?.credit_score || 700) >= 650 ? 'Good' : 'Fair'}
+                                                ${(this.currentProfile?.credit_score || 700) >= 750 ? 'Excellent' : 
+                                                 (this.currentProfile?.credit_score || 700) >= 650 ? 'Good' : 'Fair'}
                                             </p>
                                         </div>
                                         <div class="flex-1">
                                             <div class="bg-gray-200 rounded-full h-4">
                                                 <div class="h-4 rounded-full transition-all duration-500 ${
-                                                    (this.currentUser?.credit_score || 700) >= 750 ? 'bg-green-600' : 
-                                                    (this.currentUser?.credit_score || 700) >= 650 ? 'bg-yellow-600' : 'bg-red-600'
-                                                }" style="width: ${(((this.currentUser?.credit_score || 700) - 300) / 550) * 100}%"></div>
+                                                    (this.currentProfile?.credit_score || 700) >= 750 ? 'bg-green-600' : 
+                                                    (this.currentProfile?.credit_score || 700) >= 650 ? 'bg-yellow-600' : 'bg-red-600'
+                                                }" style="width: ${(((this.currentProfile?.credit_score || 700) - 300) / 550) * 100}%"></div>
                                             </div>
                                             <div class="flex justify-between text-xs text-gray-500 mt-1">
                                                 <span>300</span>
@@ -1971,7 +1971,7 @@
                                         <div class="space-y-3">
                                             ${bills.map(bill => {
                                                 const isShared = bill.is_shared_with_me || (bill.bill_shares && bill.bill_shares.length > 1);
-                                                const userAmount = bill.user_share_amount || bill.amount;
+                                                const profileAmount = bill.user_share_amount || bill.amount;
                                                 
                                                 return `
                                                 <div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
@@ -2009,10 +2009,10 @@
                                                         <div class="flex items-center space-x-3">
                                                             <div class="text-right">
                                                                 <p class="text-lg font-bold">
-                                                                    $${userAmount.toFixed(2)}
+                                                                    ${profileAmount.toFixed(2)}
                                                                 </p>
-                                                                ${isShared && bill.amount !== userAmount ? `
-                                                                    <p class="text-xs text-gray-500">Total: $${bill.amount.toFixed(2)}</p>
+                                                                ${isShared && bill.amount !== profileAmount ? `
+                                                                    <p class="text-xs text-gray-500">Total: ${bill.amount.toFixed(2)}</p>
                                                                 ` : ''}
                                                             </div>
                                                             ${!bill.is_shared_with_me ? `
