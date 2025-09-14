@@ -236,8 +236,8 @@
 
     <script>
         // Supabase Configuration
-        const SUPABASE_URL = 'https://mdbgedqvaozqrchyiswp.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kYmdlZHF2YW96cXJjaHlpc3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc4ODU4NjMsImV4cCI6MjA3MzQ2MTg2M30.9YO70hf7xm2JaKbXt5dHpHh3CgEk3fMsuLw9rMiTYQM';
+        const SUPABASE_URL = 'https://apkbziwtkbzzmjytlzsk.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwa2J6aXd0a2J6em1qeXRsenNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc4MDg1NjksImV4cCI6MjA3MzM4NDU2OX0.Igr6QQ6ZiflS8tisPTrbjH3EW8e7Bw1PAP-RB72vdVM';
 
         // Initialize Supabase
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -938,20 +938,20 @@
                             break;
 
                         case 'generate-invite':
-                            const invitation = await storage.generateInviteCode();
-                            await navigator.clipboard.writeText(invitation.code);
-                            this.showSuccess(`Invite code ${invitation.code} copied to clipboard! Valid for 7 days.`);
+                            const newInvitation = await storage.generateInviteCode();
+                            await navigator.clipboard.writeText(newInvitation.code);
+                            this.showSuccess(`Invite code ${newInvitation.code} copied to clipboard! Valid for 7 days.`);
                             this.closeModal();
                             break;
 
                         case 'accept-invite':
-                            const invitation = await storage.findInvitation(data.inviteCode);
-                            if (!invitation) {
+                            const foundInvitation = await storage.findInvitation(data.inviteCode);
+                            if (!foundInvitation) {
                                 this.showError('Invalid or expired invite code.');
                                 return;
                             }
                             
-                            await storage.acceptInvitation(invitation.id, data.inviteCode);
+                            await storage.acceptInvitation(foundInvitation.id, data.inviteCode);
                             this.showSuccess('Connection established successfully!');
                             this.closeModal();
                             this.render();
@@ -1489,4 +1489,3 @@
     </script>
 </body>
 </html>
-
