@@ -9,7 +9,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { 
             margin: 0; 
@@ -273,13 +272,15 @@
     
     <div id="app"></div>
 
+    <!-- Load Supabase first -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         // Supabase Configuration
         const SUPABASE_URL = 'https://apkbziwtkbzzmjytlzsk.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwa2J6aXd0a2J6em1qeXRsenNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc4MDg1NjksImV4cCI6MjA3MzM4NDU2OX0.Igr6QQ6ZiflS8tisPTrbjH3EW8e7Bw1PAP-RB72vdVM';
         
-        // Initialize Supabase
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Initialize Supabase client - should be available immediately since we load the script first
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Enhanced Supabase Service
         class SupabaseService {
@@ -351,14 +352,13 @@
                 if (!this.isOnline || this.syncQueue.length === 0) return;
                 
                 console.log('Processing sync queue...');
-                // In a real app, you'd process queued operations here
                 this.syncQueue = [];
             }
 
             // Authentication methods
             async signUp(email, password, name) {
                 try {
-                    const { data, error } = await supabase.auth.signUp({
+                    const { data, error } = await supabaseClient.auth.signUp({
                         email,
                         password,
                         options: {
@@ -387,7 +387,7 @@
 
             async signIn(email, password) {
                 try {
-                    const { data, error } = await supabase.auth.signInWithPassword({
+                    const { data, error } = await supabaseClient.auth.signInWithPassword({
                         email,
                         password
                     });
@@ -402,7 +402,7 @@
 
             async signOut() {
                 try {
-                    const { error } = await supabase.auth.signOut();
+                    const { error } = await supabaseClient.auth.signOut();
                     if (error) throw error;
                     
                     // Clean up subscriptions
@@ -417,7 +417,7 @@
 
             async getCurrentUser() {
                 try {
-                    const { data: { user }, error } = await supabase.auth.getUser();
+                    const { data: { user }, error } = await supabaseClient.auth.getUser();
                     if (error) throw error;
                     return user;
                 } catch (error) {
@@ -428,7 +428,7 @@
 
             async createUserProfile(userId, profileData) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('users')
                         .insert([{
                             id: userId,
@@ -447,7 +447,7 @@
 
             async getUserProfile(userId) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('users')
                         .select('*')
                         .eq('id', userId)
@@ -466,7 +466,7 @@
                     const user = await this.getCurrentUser();
                     if (!user) throw new Error('User not authenticated');
 
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('incomes')
                         .insert([{
                             ...incomeData,
@@ -488,7 +488,7 @@
                     const user = await this.getCurrentUser();
                     if (!user) throw new Error('User not authenticated');
 
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('incomes')
                         .select('*')
                         .eq('user_id', user.id)
@@ -503,7 +503,7 @@
 
             async updateIncome(incomeId, updates) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('incomes')
                         .update({
                             ...updates,
@@ -522,7 +522,7 @@
 
             async deleteIncome(incomeId) {
                 try {
-                    const { error } = await supabase
+                    const { error } = await supabaseClient
                         .from('incomes')
                         .delete()
                         .eq('id', incomeId);
@@ -541,7 +541,7 @@
                     const user = await this.getCurrentUser();
                     if (!user) throw new Error('User not authenticated');
 
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('bills')
                         .insert([{
                             ...billData,
@@ -575,7 +575,7 @@
                         created_at: new Date().toISOString()
                     }));
 
-                    const { error } = await supabase
+                    const { error } = await supabaseClient
                         .from('bill_shares')
                         .insert(shares);
 
@@ -593,7 +593,7 @@
                     if (!user) throw new Error('User not authenticated');
 
                     // Get bills owned by user
-                    const { data: ownedBills, error: ownedError } = await supabase
+                    const { data: ownedBills, error: ownedError } = await supabaseClient
                         .from('bills')
                         .select(`
                             *,
@@ -609,7 +609,7 @@
                     if (ownedError) throw ownedError;
 
                     // Get bills shared with user
-                    const { data: sharedBills, error: sharedError } = await supabase
+                    const { data: sharedBills, error: sharedError } = await supabaseClient
                         .from('bill_shares')
                         .select(`
                             bills (
@@ -645,7 +645,7 @@
 
             async updateBill(billId, updates) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('bills')
                         .update({
                             ...updates,
@@ -670,13 +670,13 @@
             async deleteBill(billId) {
                 try {
                     // Delete bill shares first
-                    await supabase
+                    await supabaseClient
                         .from('bill_shares')
                         .delete()
                         .eq('bill_id', billId);
 
                     // Delete bill
-                    const { error } = await supabase
+                    const { error } = await supabaseClient
                         .from('bills')
                         .delete()
                         .eq('id', billId);
@@ -699,7 +699,7 @@
                     const user = await this.getCurrentUser();
                     if (!user) throw new Error('User not authenticated');
 
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('invitations')
                         .insert([{
                             code: inviteCode,
@@ -720,7 +720,7 @@
 
             async findInvitation(code) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('invitations')
                         .select('*, users!invitations_from_user_id_fkey(name, email)')
                         .eq('code', code.toUpperCase())
@@ -747,7 +747,7 @@
                     }
 
                     // Mark invitation as used
-                    await supabase
+                    await supabaseClient
                         .from('invitations')
                         .update({
                             used: true,
@@ -769,7 +769,7 @@
 
             async createConnection(fromUserId, toUserId) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('connections')
                         .insert([{
                             from_user_id: fromUserId,
@@ -788,7 +788,7 @@
 
             async checkConnection(userId1, userId2) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('connections')
                         .select('*')
                         .eq('from_user_id', userId1)
@@ -807,7 +807,7 @@
                     const user = await this.getCurrentUser();
                     if (!user) throw new Error('User not authenticated');
 
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('connections')
                         .select(`
                             to_user_id,
@@ -832,13 +832,13 @@
                     if (!user) throw new Error('User not authenticated');
 
                     // Remove bidirectional connections
-                    await supabase
+                    await supabaseClient
                         .from('connections')
                         .delete()
                         .eq('from_user_id', user.id)
                         .eq('to_user_id', connectedUserId);
 
-                    await supabase
+                    await supabaseClient
                         .from('connections')
                         .delete()
                         .eq('from_user_id', connectedUserId)
@@ -857,7 +857,7 @@
                     const user = await this.getCurrentUser();
                     if (!user) throw new Error('User not authenticated');
 
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('notifications')
                         .select('*')
                         .eq('user_id', user.id)
@@ -873,7 +873,7 @@
 
             async dismissNotification(notificationId) {
                 try {
-                    const { error } = await supabase
+                    const { error } = await supabaseClient
                         .from('notifications')
                         .update({ read: true })
                         .eq('id', notificationId);
@@ -917,7 +917,7 @@
             async createNotification(userId, type, message, metadata = {}) {
                 try {
                     // Check if notification already exists
-                    const { data: existing } = await supabase
+                    const { data: existing } = await supabaseClient
                         .from('notifications')
                         .select('id')
                         .eq('user_id', userId)
@@ -927,7 +927,7 @@
 
                     if (existing && existing.length > 0) return;
 
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('notifications')
                         .insert([{
                             user_id: userId,
@@ -992,9 +992,6 @@
                 return subscription;
             }
         }
-
-        // Initialize service
-        const storage = new SupabaseService();
 
         // Enhanced Main App Class
         class SmartBudgetApp {
@@ -1387,7 +1384,6 @@
             }
 
             getModalContent(type, itemId) {
-                // Modal content implementation (same as before but async data loading)
                 switch (type) {
                     case 'connections':
                         return `
@@ -1430,7 +1426,6 @@
                         `;
 
                     case 'income':
-                        // For edit mode, you would need to fetch the item data
                         return `
                             <h3 class="text-xl font-bold mb-4">${itemId ? 'Edit' : 'Add'} Income</h3>
                             <form data-form="${itemId ? 'edit-income' : 'add-income'}">
@@ -1752,306 +1747,298 @@
 
                 switch (this.activeTab) {
                     case 'dashboard':
-                        return notificationsHtml + this.renderDashboard(totals);
-                    case 'income':
-                        return notificationsHtml + this.renderIncomeTab(incomes);
-                    case 'bills':
-                        return notificationsHtml + this.renderBillsTab(bills);
-                    case 'connections':
-                        return notificationsHtml + this.renderConnectionsTab();
-                    default:
-                        return notificationsHtml + this.renderDashboard(totals);
-                }
-            }
-
-            renderDashboard(totals) {
-                return `
-                    <div class="space-y-6 fade-in">
-                        <!-- Summary Cards -->
-                        <div class="grid-responsive">
-                            <div class="card card-mobile">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h3 class="text-gray-600 text-sm font-medium">Monthly Income</h3>
-                                    <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                                    </svg>
-                                </div>
-                                <p class="text-2xl font-bold ${this.privateMode ? 'filter blur-sm' : ''}">
-                                    $${totals.income.toFixed(2)}
-                                </p>
-                            </div>
-                            
-                            <div class="card card-mobile">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h3 class="text-gray-600 text-sm font-medium">Monthly Bills</h3>
-                                    <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                                    </svg>
-                                </div>
-                                <p class="text-2xl font-bold">
-                                    $${totals.bills.toFixed(2)}
-                                </p>
-                            </div>
-                            
-                            <div class="card card-mobile">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h3 class="text-gray-600 text-sm font-medium">Remaining</h3>
-                                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                            d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                    </svg>
-                                </div>
-                                <p class="text-2xl font-bold ${totals.remaining >= 0 ? 'text-green-600' : 'text-red-600'} ${this.privateMode ? 'filter blur-sm' : ''}">
-                                    $${totals.remaining.toFixed(2)}
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Credit Score -->
-                        <div class="card p-6">
-                            <h3 class="text-lg font-bold mb-4">Credit Score</h3>
-                            <div class="flex items-center space-x-6">
-                                <div class="text-center">
-                                    <div class="text-4xl font-bold ${
-                                        this.currentUser?.credit_score >= 750 ? 'text-green-600' : 
-                                        this.currentUser?.credit_score >= 650 ? 'text-yellow-600' : 'text-red-600'
-                                    }">
-                                        ${this.currentUser?.credit_score || 700}
+                        return notificationsHtml + `
+                            <div class="space-y-6 fade-in">
+                                <!-- Summary Cards -->
+                                <div class="grid-responsive">
+                                    <div class="card card-mobile">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <h3 class="text-gray-600 text-sm font-medium">Monthly Income</h3>
+                                            <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                            </svg>
+                                        </div>
+                                        <p class="text-2xl font-bold ${this.privateMode ? 'filter blur-sm' : ''}">
+                                            $${totals.income.toFixed(2)}
+                                        </p>
                                     </div>
-                                    <p class="text-sm text-gray-600 mt-1">
-                                        ${(this.currentUser?.credit_score || 700) >= 750 ? 'Excellent' : 
-                                         (this.currentUser?.credit_score || 700) >= 650 ? 'Good' : 'Fair'}
-                                    </p>
-                                </div>
-                                <div class="flex-1">
-                                    <div class="bg-gray-200 rounded-full h-4">
-                                        <div class="h-4 rounded-full transition-all duration-500 ${
-                                            (this.currentUser?.credit_score || 700) >= 750 ? 'bg-green-600' : 
-                                            (this.currentUser?.credit_score || 700) >= 650 ? 'bg-yellow-600' : 'bg-red-600'
-                                        }" style="width: ${(((this.currentUser?.credit_score || 700) - 300) / 550) * 100}%"></div>
+                                    
+                                    <div class="card card-mobile">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <h3 class="text-gray-600 text-sm font-medium">Monthly Bills</h3>
+                                            <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                            </svg>
+                                        </div>
+                                        <p class="text-2xl font-bold">
+                                            $${totals.bills.toFixed(2)}
+                                        </p>
                                     </div>
-                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
-                                        <span>300</span>
-                                        <span>850</span>
+                                    
+                                    <div class="card card-mobile">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <h3 class="text-gray-600 text-sm font-medium">Remaining</h3>
+                                            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                    d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                        <p class="text-2xl font-bold ${totals.remaining >= 0 ? 'text-green-600' : 'text-red-600'} ${this.privateMode ? 'filter blur-sm' : ''}">
+                                            $${totals.remaining.toFixed(2)}
+                                        </p>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        <!-- Quick Actions -->
-                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                            <button data-action="show-modal" data-modal="income" 
-                                class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">
-                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                                </svg>
-                                <span class="text-sm font-medium">Add Income</span>
-                            </button>
-                            
-                            <button data-action="show-modal" data-modal="bill" 
-                                class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">
-                                <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                </svg>
-                                <span class="text-sm font-medium">Add Bill</span>
-                            </button>
-                            
-                            <button data-action="show-modal" data-modal="connections" 
-                                class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">
-                                <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                                </svg>
-                                <span class="text-sm font-medium">Connect</span>
-                            </button>
-                            
-                            <button class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn opacity-50 cursor-not-allowed">
-                                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                                </svg>
-                                <span class="text-sm font-medium">Link Account</span>
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderIncomeTab(incomes) {
-                return `
-                    <div class="card fade-in">
-                        <div class="p-6 border-b flex justify-between items-center">
-                            <h2 class="text-xl font-bold">Income Sources</h2>
-                            <button data-action="show-modal" data-modal="income" 
-                                class="btn btn-primary">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                                </svg>
-                                <span>Add Income</span>
-                            </button>
-                        </div>
-                        <div class="p-6">
-                            ${incomes.length === 0 ? `
-                                <div class="text-center py-12">
-                                    <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    <p class="text-gray-500">No income sources added yet</p>
-                                    <p class="text-sm text-gray-400 mt-2">Add your income sources to start tracking</p>
-                                </div>
-                            ` : `
-                                <div class="space-y-3">
-                                    ${incomes.map(income => `
-                                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
-                                            <div class="flex items-center space-x-4">
-                                                <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                                                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                                            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                </div>
-                                                <div class="flex-1">
-                                                    <p class="font-medium">${income.source}</p>
-                                                    <p class="text-sm text-gray-600">
-                                                        ${income.type} • ${income.frequency}
-                                                    </p>
-                                                </div>
+                                <!-- Credit Score -->
+                                <div class="card p-6">
+                                    <h3 class="text-lg font-bold mb-4">Credit Score</h3>
+                                    <div class="flex items-center space-x-6">
+                                        <div class="text-center">
+                                            <div class="text-4xl font-bold ${
+                                                (this.currentUser?.credit_score || 700) >= 750 ? 'text-green-600' : 
+                                                (this.currentUser?.credit_score || 700) >= 650 ? 'text-yellow-600' : 'text-red-600'
+                                            }">
+                                                ${this.currentUser?.credit_score || 700}
                                             </div>
-                                            <div class="flex items-center space-x-2">
-                                                <p class="text-lg font-bold text-green-600 ${this.privateMode ? 'filter blur-sm' : ''}">
-                                                    $${income.amount.toFixed(2)}
-                                                </p>
-                                                <div class="flex space-x-1">
-                                                    <button data-action="show-modal" data-modal="income" data-id="${income.id}" 
-                                                        class="btn p-2 text-blue-600 hover:text-blue-800">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                        </svg>
-                                                    </button>
-                                                    <button data-action="delete-income" data-income-id="${income.id}" 
-                                                        class="btn p-2 text-red-600 hover:text-red-800">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                    </button>
-                                                </div>
+                                            <p class="text-sm text-gray-600 mt-1">
+                                                ${(this.currentUser?.credit_score || 700) >= 750 ? 'Excellent' : 
+                                                 (this.currentUser?.credit_score || 700) >= 650 ? 'Good' : 'Fair'}
+                                            </p>
+                                        </div>
+                                        <div class="flex-1">
+                                            <div class="bg-gray-200 rounded-full h-4">
+                                                <div class="h-4 rounded-full transition-all duration-500 ${
+                                                    (this.currentUser?.credit_score || 700) >= 750 ? 'bg-green-600' : 
+                                                    (this.currentUser?.credit_score || 700) >= 650 ? 'bg-yellow-600' : 'bg-red-600'
+                                                }" style="width: ${(((this.currentUser?.credit_score || 700) - 300) / 550) * 100}%"></div>
+                                            </div>
+                                            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                                <span>300</span>
+                                                <span>850</span>
                                             </div>
                                         </div>
-                                    `).join('')}
+                                    </div>
                                 </div>
-                            `}
-                        </div>
-                    </div>
-                `;
-            }
 
-            renderBillsTab(bills) {
-                return `
-                    <div class="card fade-in">
-                        <div class="p-6 border-b flex justify-between items-center">
-                            <h2 class="text-xl font-bold">Bills & Payments</h2>
-                            <button data-action="show-modal" data-modal="bill" 
-                                class="btn btn-primary">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                                </svg>
-                                <span>Add Bill</span>
-                            </button>
-                        </div>
-                        <div class="p-6">
-                            ${bills.length === 0 ? `
-                                <div class="text-center py-12">
-                                    <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                    </svg>
-                                    <p class="text-gray-500">No bills added yet</p>
-                                    <p class="text-sm text-gray-400 mt-2">Add your bills to track due dates and payments</p>
+                                <!-- Quick Actions -->
+                                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <button data-action="show-modal" data-modal="income" 
+                                        class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">
+                                        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        <span class="text-sm font-medium">Add Income</span>
+                                    </button>
+                                    
+                                    <button data-action="show-modal" data-modal="bill" 
+                                        class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">
+                                        <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                        </svg>
+                                        <span class="text-sm font-medium">Add Bill</span>
+                                    </button>
+                                    
+                                    <button data-action="show-modal" data-modal="connections" 
+                                        class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">
+                                        <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                                        </svg>
+                                        <span class="text-sm font-medium">Connect</span>
+                                    </button>
+                                    
+                                    <button class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn opacity-50 cursor-not-allowed">
+                                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                        </svg>
+                                        <span class="text-sm font-medium">Link Account</span>
+                                    </button>
                                 </div>
-                            ` : `
-                                <div class="space-y-3">
-                                    ${bills.map(bill => {
-                                        const isShared = bill.is_shared_with_me || (bill.bill_shares && bill.bill_shares.length > 1);
-                                        const userAmount = bill.user_share_amount || bill.amount;
-                                        
-                                        return `
-                                        <div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
-                                            <div class="flex items-center justify-between mb-3">
-                                                <div class="flex items-center space-x-4 flex-1">
-                                                    <div class="w-10 h-10 ${bill.paid ? 'bg-green-100' : 'bg-red-100'} rounded-full flex items-center justify-center">
-                                                        <svg class="w-6 h-6 ${bill.paid ? 'text-green-600' : 'text-red-600'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            ${bill.paid ? 
-                                                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />' :
-                                                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />'
-                                                            }
-                                                        </svg>
-                                                    </div>
-                                                    <div class="flex-1">
-                                                        <div class="flex items-center space-x-2 mb-1">
-                                                            <p class="font-medium">${bill.name}</p>
-                                                            ${isShared ? 
-                                                                '<span class="shared-indicator">Shared</span>' : 
-                                                                '<span class="personal-indicator">Personal</span>'
-                                                            }
+                            </div>
+                        `;
+
+                    case 'income':
+                        return notificationsHtml + `
+                            <div class="card fade-in">
+                                <div class="p-6 border-b flex justify-between items-center">
+                                    <h2 class="text-xl font-bold">Income Sources</h2>
+                                    <button data-action="show-modal" data-modal="income" 
+                                        class="btn btn-primary">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        <span>Add Income</span>
+                                    </button>
+                                </div>
+                                <div class="p-6">
+                                    ${incomes.length === 0 ? `
+                                        <div class="text-center py-12">
+                                            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p class="text-gray-500">No income sources added yet</p>
+                                            <p class="text-sm text-gray-400 mt-2">Add your income sources to start tracking</p>
+                                        </div>
+                                    ` : `
+                                        <div class="space-y-3">
+                                            ${incomes.map(income => `
+                                                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                                    <div class="flex items-center space-x-4">
+                                                        <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
                                                         </div>
-                                                        <p class="text-sm text-gray-600">
-                                                            Due: ${new Date(bill.due_date).toLocaleDateString()} • ${bill.category}
-                                                        </p>
-                                                        ${isShared ? `
-                                                            <p class="text-sm text-purple-600 flex items-center mt-1">
-                                                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                                                                </svg>
-                                                                ${bill.is_shared_with_me ? 'Shared with you' : 'Shared bill'}
+                                                        <div class="flex-1">
+                                                            <p class="font-medium">${income.source}</p>
+                                                            <p class="text-sm text-gray-600">
+                                                                ${income.type} • ${income.frequency}
                                                             </p>
-                                                        ` : ''}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div class="flex items-center space-x-3">
-                                                    <div class="text-right">
-                                                        <p class="text-lg font-bold">
-                                                            $${userAmount.toFixed(2)}
+                                                    <div class="flex items-center space-x-2">
+                                                        <p class="text-lg font-bold text-green-600 ${this.privateMode ? 'filter blur-sm' : ''}">
+                                                            $${income.amount.toFixed(2)}
                                                         </p>
-                                                        ${isShared && bill.amount !== userAmount ? `
-                                                            <p class="text-xs text-gray-500">Total: $${bill.amount.toFixed(2)}</p>
-                                                        ` : ''}
-                                                    </div>
-                                                    ${!bill.is_shared_with_me ? `
                                                         <div class="flex space-x-1">
-                                                            <button data-action="show-modal" data-modal="bill" data-id="${bill.id}" 
+                                                            <button data-action="show-modal" data-modal="income" data-id="${income.id}" 
                                                                 class="btn p-2 text-blue-600 hover:text-blue-800">
                                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                                 </svg>
                                                             </button>
-                                                            <button data-action="delete-bill" data-bill-id="${bill.id}" 
+                                                            <button data-action="delete-income" data-income-id="${income.id}" 
                                                                 class="btn p-2 text-red-600 hover:text-red-800">
                                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                                 </svg>
                                                             </button>
                                                         </div>
-                                                    ` : ''}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            ${!bill.paid ? `
-                                                <button data-action="mark-paid" data-bill-id="${bill.id}" 
-                                                    class="w-full mt-3 btn btn-success">
-                                                    Mark as Paid
-                                                </button>
-                                            ` : `
-                                                <div class="mt-3 text-center text-green-600 font-medium">
-                                                    ✓ Paid on ${new Date(bill.paid_date).toLocaleDateString()}
-                                                </div>
-                                            `}
+                                            `).join('')}
                                         </div>
-                                    `;
-                                    }).join('')}
+                                    `}
                                 </div>
-                            `}
-                        </div>
-                    </div>
-                `;
+                            </div>
+                        `;
+
+                    case 'bills':
+                        return notificationsHtml + `
+                            <div class="card fade-in">
+                                <div class="p-6 border-b flex justify-between items-center">
+                                    <h2 class="text-xl font-bold">Bills & Payments</h2>
+                                    <button data-action="show-modal" data-modal="bill" 
+                                        class="btn btn-primary">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        <span>Add Bill</span>
+                                    </button>
+                                </div>
+                                <div class="p-6">
+                                    ${bills.length === 0 ? `
+                                        <div class="text-center py-12">
+                                            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                            </svg>
+                                            <p class="text-gray-500">No bills added yet</p>
+                                            <p class="text-sm text-gray-400 mt-2">Add your bills to track due dates and payments</p>
+                                        </div>
+                                    ` : `
+                                        <div class="space-y-3">
+                                            ${bills.map(bill => {
+                                                const isShared = bill.is_shared_with_me || (bill.bill_shares && bill.bill_shares.length > 1);
+                                                const userAmount = bill.user_share_amount || bill.amount;
+                                                
+                                                return `
+                                                <div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                                    <div class="flex items-center justify-between mb-3">
+                                                        <div class="flex items-center space-x-4 flex-1">
+                                                            <div class="w-10 h-10 ${bill.paid ? 'bg-green-100' : 'bg-red-100'} rounded-full flex items-center justify-center">
+                                                                <svg class="w-6 h-6 ${bill.paid ? 'text-green-600' : 'text-red-600'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    ${bill.paid ? 
+                                                                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />' :
+                                                                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />'
+                                                                    }
+                                                                </svg>
+                                                            </div>
+                                                            <div class="flex-1">
+                                                                <div class="flex items-center space-x-2 mb-1">
+                                                                    <p class="font-medium">${bill.name}</p>
+                                                                    ${isShared ? 
+                                                                        '<span class="shared-indicator">Shared</span>' : 
+                                                                        '<span class="personal-indicator">Personal</span>'
+                                                                    }
+                                                                </div>
+                                                                <p class="text-sm text-gray-600">
+                                                                    Due: ${new Date(bill.due_date).toLocaleDateString()} • ${bill.category}
+                                                                </p>
+                                                                ${isShared ? `
+                                                                    <p class="text-sm text-purple-600 flex items-center mt-1">
+                                                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                                                        </svg>
+                                                                        ${bill.is_shared_with_me ? 'Shared with you' : 'Shared bill'}
+                                                                    </p>
+                                                                ` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div class="flex items-center space-x-3">
+                                                            <div class="text-right">
+                                                                <p class="text-lg font-bold">
+                                                                    $${userAmount.toFixed(2)}
+                                                                </p>
+                                                                ${isShared && bill.amount !== userAmount ? `
+                                                                    <p class="text-xs text-gray-500">Total: $${bill.amount.toFixed(2)}</p>
+                                                                ` : ''}
+                                                            </div>
+                                                            ${!bill.is_shared_with_me ? `
+                                                                <div class="flex space-x-1">
+                                                                    <button data-action="show-modal" data-modal="bill" data-id="${bill.id}" 
+                                                                        class="btn p-2 text-blue-600 hover:text-blue-800">
+                                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                                        </svg>
+                                                                    </button>
+                                                                    <button data-action="delete-bill" data-bill-id="${bill.id}" 
+                                                                        class="btn p-2 text-red-600 hover:text-red-800">
+                                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                        </svg>
+                                                                    </button>
+                                                                </div>
+                                                            ` : ''}
+                                                        </div>
+                                                    </div>
+                                                    ${!bill.paid ? `
+                                                        <button data-action="mark-paid" data-bill-id="${bill.id}" 
+                                                            class="w-full mt-3 btn btn-success">
+                                                            Mark as Paid
+                                                        </button>
+                                                    ` : `
+                                                        <div class="mt-3 text-center text-green-600 font-medium">
+                                                            ✓ Paid on ${new Date(bill.paid_date).toLocaleDateString()}
+                                                        </div>
+                                                    `}
+                                                </div>
+                                            `;
+                                            }).join('')}
+                                        </div>
+                                    `}
+                                </div>
+                            </div>
+                        `;
+
+                    case 'connections':
+                        return notificationsHtml + this.renderConnectionsTab();
+
+                    default:
+                        return notificationsHtml + `<div class="text-center py-12 text-gray-500">Invalid tab</div>`;
+                }
             }
 
             async renderConnectionsTab() {
@@ -2335,8 +2322,13 @@
             });
         }
 
-        // Initialize app
+        // Initialize storage and app
+        const storage = new SupabaseService();
         const app = new SmartBudgetApp();
+
+        // Make them globally available
+        window.storage = storage;
+        window.app = app;
     </script>
 </body>
 </html>
