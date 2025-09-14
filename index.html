@@ -831,13 +831,15 @@
                     const currentUser = await this.getCurrentUser();
                     if (!currentUser) throw new Error('User not authenticated');
 
-                    // Remove bidirectional connections
+                    // Remove connections in both directions (where user has permission based on RLS)
+                    // Remove connection where current user is from_user_id
                     await supabaseClient
                         .from('connections')
                         .delete()
                         .eq('from_user_id', currentUser.id)
                         .eq('to_user_id', connectedProfileId);
 
+                    // Remove connection where current user is to_user_id (if RLS allows deletion)
                     await supabaseClient
                         .from('connections')
                         .delete()
