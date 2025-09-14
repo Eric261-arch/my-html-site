@@ -370,30 +370,13 @@
 
                     if (error) throw error;
 
-                    // Wait longer for profile creation and retry if needed
+                    // Create profile
                     if (data.user) {
-                        let profile = null;
-                        let attempts = 0;
-                        
-                        while (!profile && attempts < 5) {
-                            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-                            
-                            try {
-                                profile = await this.createProfile(data.user.id, {
-                                    email,
-                                    name,
-                                    credit_score: Math.floor(Math.random() * 200) + 600
-                                });
-                            } catch (profileError) {
-                                console.log(`Profile creation attempt ${attempts + 1} failed:`, profileError);
-                            }
-                            
-                            attempts++;
-                        }
-                        
-                        if (!profile) {
-                            throw new Error('Failed to create profile after multiple attempts');
-                        }
+                        await this.createProfile(data.user.id, {
+                            email,
+                            name,
+                            credit_score: Math.floor(Math.random() * 200) + 600
+                        });
                     }
 
                     return { user: data.user, error: null };
@@ -467,12 +450,11 @@
                     const { data, error } = await supabaseClient
                         .from('profiles')
                         .select('*')
-                        .eq('id', profileId);
+                        .eq('id', profileId)
+                        .single();
 
                     if (error) throw error;
-                    
-                    // Return first result or null instead of using .single()
-                    return data && data.length > 0 ? data[0] : null;
+                    return data;
                 } catch (error) {
                     return await this.handleError(error, 'getProfile');
                 }
@@ -1287,30 +1269,36 @@
 
             async generateInvite() {
                 try {
-                    // Add debugging
+                    // First check if we have a current profile
                     const currentUser = await storage.getCurrentUser();
-                    console.log('Current user for invite:', currentUser);
+                    console.log('Current user check:', currentUser);
                     
                     if (!currentUser) {
                         this.showError('Please sign in to generate invite codes.');
                         return;
                     }
 
-                    // Check if profile exists
-                    const profile = await storage.getProfile(currentUser.id);
-                    console.log('User profile check:', profile);
+                    const inviteCode = await storage.generateInviteCode();
+                    console.log('Generated invite code:', inviteCode);
                     
-                    if (!profile) {
-                        this.showError('Profile not found. Please refresh and try again.');
-                        return;
+                    const invitation = await storage.createInvitation(inviteCode);
+                    console.log('Created invitation:', invitation);
+
+                    if (invitation) {
+                        try {
+                            await navigator.clipboard.writeText(inviteCode);
+                            this.showSuccess(`Invite code ${inviteCode} copied to clipboard! Valid for 7 days.`);
+                        } catch (err) {
+                            this.showSuccess(`Invite code: ${inviteCode} (Valid for 7 days)`);
+                        }
+                    } else {
+                        this.showError('Failed to create invitation. Please try again.');
                     }
 
-                    const inviteCode = await storage.generateInviteCode();
-                    const invitation = await storage.createInvitation(inviteCode);
-                    
-                    // ... rest of function
+                    this.closeModal();
+                    this.render();
                 } catch (error) {
-                    console.error('Full generateInvite error:', error);
+                    console.error('Error in generateInvite:', error);
                     this.showError(`Failed to generate invite: ${error.message}`);
                 }
             }
