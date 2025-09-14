@@ -1258,20 +1258,39 @@
             }
 
             async generateInvite() {
-                const inviteCode = await storage.generateInviteCode();
-                const invitation = await storage.createInvitation(inviteCode);
-
-                if (invitation) {
-                    try {
-                        await navigator.clipboard.writeText(inviteCode);
-                        this.showSuccess(`Invite code ${inviteCode} copied to clipboard! Valid for 7 days.`);
-                    } catch (err) {
-                        this.showSuccess(`Invite code: ${inviteCode} (Valid for 7 days)`);
+                try {
+                    // First check if we have a current user
+                    const currentUser = await storage.getCurrentUser();
+                    console.log('Current user check:', currentUser);
+                    
+                    if (!currentUser) {
+                        this.showError('Please sign in to generate invite codes.');
+                        return;
                     }
-                }
 
-                this.closeModal();
-                this.render();
+                    const inviteCode = await storage.generateInviteCode();
+                    console.log('Generated invite code:', inviteCode);
+                    
+                    const invitation = await storage.createInvitation(inviteCode);
+                    console.log('Created invitation:', invitation);
+
+                    if (invitation) {
+                        try {
+                            await navigator.clipboard.writeText(inviteCode);
+                            this.showSuccess(`Invite code ${inviteCode} copied to clipboard! Valid for 7 days.`);
+                        } catch (err) {
+                            this.showSuccess(`Invite code: ${inviteCode} (Valid for 7 days)`);
+                        }
+                    } else {
+                        this.showError('Failed to create invitation. Please try again.');
+                    }
+
+                    this.closeModal();
+                    this.render();
+                } catch (error) {
+                    console.error('Error in generateInvite:', error);
+                    this.showError(`Failed to generate invite: ${error.message}`);
+                }
             }
 
             async acceptInvite(inviteCode) {
