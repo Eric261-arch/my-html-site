@@ -207,6 +207,51 @@
             font-weight: 500;
         }
 
+        .recurring-indicator {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            color: white;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .status-complete {
+            background: #dcfce7;
+            color: #15803d;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .status-waiting-others {
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .status-waiting-you {
+            background: #fecaca;
+            color: #dc2626;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .status-pending {
+            background: #e0e7ff;
+            color: #3730a3;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
         .connection-badge {
             display: inline-flex;
             align-items: center;
@@ -225,6 +270,21 @@
             background: #fef3c7;
             color: #92400e;
         }
+
+        .notification-urgent {
+            border-left: 4px solid #dc2626;
+            background: #fef2f2;
+        }
+
+        .notification-warning {
+            border-left: 4px solid #d97706;
+            background: #fffbeb;
+        }
+
+        .notification-info {
+            border-left: 4px solid #2563eb;
+            background: #eff6ff;
+        }
     </style>
 </head>
 <body>
@@ -236,8 +296,8 @@
 
     <script>
         // Supabase Configuration
-        const SUPABASE_URL = 'https://mdbgedqvaozqrchyiswp.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kYmdlZHF2YW96cXJjaHlpc3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc4ODU4NjMsImV4cCI6MjA3MzQ2MTg2M30.9YO70hf7xm2JaKbXt5dHpHh3CgEk3fMsuLw9rMiTYQM';
+        const SUPABASE_URL = 'https://apkbziwtkbzzmjytlzsk.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwa2J6aXd0a2J6em1qeXRsenNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc4MDg1NjksImV4cCI6MjA3MzM4NDU2OX0.Igr6QQ6ZiflS8tisPTrbjH3EW8e7Bw1PAP-RB72vdVM';
 
         // Initialize Supabase
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -307,7 +367,8 @@
                                 settings: {
                                     private_mode: false,
                                     notifications: true,
-                                    currency: 'USD'
+                                    currency: 'USD',
+                                    notification_timing: 3 // days before due date
                                 }
                             }]);
 
@@ -374,6 +435,23 @@
                 } catch (error) {
                     console.error('Get user profile error:', error);
                     return null;
+                }
+            }
+
+            async updateUserSettings(settings) {
+                try {
+                    const { data, error } = await supabase
+                        .from('users')
+                        .update({ settings })
+                        .eq('id', this.user.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Update user settings error:', error);
+                    throw error;
                 }
             }
 
@@ -591,16 +669,19 @@
                 }
             }
 
-            // Bill methods
+            // Enhanced Bill methods
             async addBill(billData) {
                 try {
+                    const billToInsert = {
+                        ...billData,
+                        user_id: this.user.id,
+                        paid: false,
+                        creator_paid: false
+                    };
+
                     const { data, error } = await supabase
                         .from('bills')
-                        .insert([{
-                            ...billData,
-                            user_id: this.user.id,
-                            paid: false
-                        }])
+                        .insert([billToInsert])
                         .select()
                         .single();
 
@@ -658,7 +739,8 @@
                                 ...share.bills,
                                 user_share: share.amount,
                                 is_shared: true,
-                                user_paid: share.paid
+                                user_paid: share.paid,
+                                share_id: share.id
                             });
                         }
                     });
@@ -667,6 +749,151 @@
                 } catch (error) {
                     console.error('Get user bills error:', error);
                     return [];
+                }
+            }
+
+            async markBillPaid(billId, isShared = false, shareId = null) {
+                try {
+                    if (isShared && shareId) {
+                        // Mark user's share as paid
+                        const { error } = await supabase
+                            .from('bill_shares')
+                            .update({
+                                paid: true,
+                                paid_date: new Date().toISOString()
+                            })
+                            .eq('id', shareId);
+
+                        if (error) throw error;
+                    } else {
+                        // Mark creator's portion as paid
+                        const { error } = await supabase
+                            .from('bills')
+                            .update({
+                                creator_paid: true,
+                                creator_paid_date: new Date().toISOString()
+                            })
+                            .eq('id', billId)
+                            .eq('user_id', this.user.id);
+
+                        if (error) throw error;
+
+                        // Check if all shares are paid and mark bill as complete
+                        await this.checkAndCompleteBill(billId);
+                    }
+
+                    return true;
+                } catch (error) {
+                    console.error('Mark bill paid error:', error);
+                    throw error;
+                }
+            }
+
+            async checkAndCompleteBill(billId) {
+                try {
+                    // Get bill and all its shares
+                    const { data: bill, error: billError } = await supabase
+                        .from('bills')
+                        .select('*, bill_shares(*)')
+                        .eq('id', billId)
+                        .single();
+
+                    if (billError) throw billError;
+
+                    // Check if creator paid and all shares are paid
+                    const creatorPaid = bill.creator_paid;
+                    const allSharesPaid = bill.bill_shares.length === 0 || 
+                                         bill.bill_shares.every(share => share.paid);
+
+                    if (creatorPaid && allSharesPaid) {
+                        // Mark entire bill as complete
+                        const { error } = await supabase
+                            .from('bills')
+                            .update({
+                                paid: true,
+                                paid_date: new Date().toISOString()
+                            })
+                            .eq('id', billId);
+
+                        if (error) throw error;
+
+                        // Handle recurring bills
+                        if (bill.recurring && bill.recurrence_interval) {
+                            await this.createNextRecurringBill(bill);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Check and complete bill error:', error);
+                }
+            }
+
+            async createNextRecurringBill(originalBill) {
+                try {
+                    const currentDate = new Date(originalBill.due_date);
+                    let nextDate = new Date(currentDate);
+
+                    // Calculate next due date based on recurrence interval
+                    switch (originalBill.recurrence_interval) {
+                        case 'monthly':
+                            nextDate.setMonth(nextDate.getMonth() + 1);
+                            break;
+                        case 'bi-monthly':
+                            nextDate.setMonth(nextDate.getMonth() + 2);
+                            break;
+                        case 'quarterly':
+                            nextDate.setMonth(nextDate.getMonth() + 3);
+                            break;
+                        case 'semi-annually':
+                            nextDate.setMonth(nextDate.getMonth() + 6);
+                            break;
+                        case 'annually':
+                            nextDate.setFullYear(nextDate.getFullYear() + 1);
+                            break;
+                    }
+
+                    // Create new bill instance
+                    const newBillData = {
+                        user_id: originalBill.user_id,
+                        name: originalBill.name,
+                        amount: originalBill.amount,
+                        due_date: nextDate.toISOString().split('T')[0],
+                        category: originalBill.category,
+                        recurring: true,
+                        recurrence_interval: originalBill.recurrence_interval,
+                        shared_with: originalBill.shared_with,
+                        splits: originalBill.splits,
+                        paid: false,
+                        creator_paid: false
+                    };
+
+                    const { data: newBill, error } = await supabase
+                        .from('bills')
+                        .insert([newBillData])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    // Recreate bill shares if it was shared
+                    if (originalBill.shared_with && originalBill.splits) {
+                        const shares = Object.entries(originalBill.splits).map(([userId, amount]) => ({
+                            bill_id: newBill.id,
+                            user_id: userId,
+                            amount: amount,
+                            paid: false
+                        }));
+
+                        const { error: sharesError } = await supabase
+                            .from('bill_shares')
+                            .insert(shares);
+
+                        if (sharesError) throw sharesError;
+                    }
+
+                    return newBill;
+                } catch (error) {
+                    console.error('Create next recurring bill error:', error);
+                    throw error;
                 }
             }
 
@@ -683,41 +910,6 @@
                     return data;
                 } catch (error) {
                     console.error('Update bill error:', error);
-                    throw error;
-                }
-            }
-
-            async markBillPaid(billId, isShared = false) {
-                try {
-                    if (isShared) {
-                        // Mark user's share as paid
-                        const { error } = await supabase
-                            .from('bill_shares')
-                            .update({
-                                paid: true,
-                                paid_date: new Date().toISOString()
-                            })
-                            .eq('bill_id', billId)
-                            .eq('user_id', this.user.id);
-
-                        if (error) throw error;
-                    } else {
-                        // Mark entire bill as paid
-                        const { error } = await supabase
-                            .from('bills')
-                            .update({
-                                paid: true,
-                                paid_date: new Date().toISOString()
-                            })
-                            .eq('id', billId)
-                            .eq('user_id', this.user.id);
-
-                        if (error) throw error;
-                    }
-
-                    return true;
-                } catch (error) {
-                    console.error('Mark bill paid error:', error);
                     throw error;
                 }
             }
@@ -745,6 +937,47 @@
                 }
             }
 
+            // Notification methods
+            async getUpcomingBillNotifications() {
+                try {
+                    const userProfile = await this.getUserProfile();
+                    const notificationDays = userProfile?.settings?.notification_timing || 3;
+                    
+                    const targetDate = new Date();
+                    targetDate.setDate(targetDate.getDate() + notificationDays);
+                    
+                    const bills = await this.getUserBills();
+                    const upcomingBills = bills.filter(bill => {
+                        if (bill.paid) return false;
+                        
+                        const dueDate = new Date(bill.due_date);
+                        const today = new Date();
+                        const daysDiff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+                        
+                        return daysDiff >= 0 && daysDiff <= notificationDays;
+                    });
+
+                    return upcomingBills.map(bill => {
+                        const dueDate = new Date(bill.due_date);
+                        const today = new Date();
+                        const daysDiff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+                        
+                        let urgency = 'info';
+                        if (daysDiff === 0) urgency = 'urgent';
+                        else if (daysDiff === 1) urgency = 'warning';
+                        
+                        return {
+                            ...bill,
+                            days_until_due: daysDiff,
+                            urgency
+                        };
+                    });
+                } catch (error) {
+                    console.error('Get upcoming notifications error:', error);
+                    return [];
+                }
+            }
+
             // Utility methods
             async logTransaction(type, data) {
                 try {
@@ -766,7 +999,7 @@
         // Initialize Supabase service
         const storage = new SupabaseService();
 
-        // Enhanced Main App Class with Supabase integration
+        // Enhanced Main App Class
         class SmartBudgetApp {
             constructor() {
                 this.currentUser = null;
@@ -857,7 +1090,8 @@
                         
                         case 'mark-paid':
                             const isShared = element.dataset.shared === 'true';
-                            await storage.markBillPaid(element.dataset.billId, isShared);
+                            const shareId = element.dataset.shareId;
+                            await storage.markBillPaid(element.dataset.billId, isShared, shareId);
                             this.render();
                             break;
                         
@@ -927,6 +1161,20 @@
                             }
                             break;
 
+                        case 'notification-settings':
+                            const currentSettings = this.currentUser.settings || {};
+                            const updatedSettings = {
+                                ...currentSettings,
+                                notification_timing: parseInt(data.notificationTiming)
+                            };
+                            
+                            await storage.updateUserSettings(updatedSettings);
+                            this.currentUser.settings = updatedSettings;
+                            this.showSuccess('Notification settings updated!');
+                            this.closeModal();
+                            this.render();
+                            break;
+
                         case 'generate-invite':
                             const invitation = await storage.generateInviteCode();
                             await navigator.clipboard.writeText(invitation.code);
@@ -971,7 +1219,9 @@
                                 name: data.name,
                                 amount: parseFloat(data.amount),
                                 due_date: data.dueDate,
-                                category: data.category
+                                category: data.category,
+                                recurring: data.recurring === 'true',
+                                recurrence_interval: data.recurring === 'true' ? data.recurrenceInterval : null
                             };
 
                             // Handle shared bills
@@ -1060,6 +1310,9 @@
                 }
 
                 switch(type) {
+                    case 'notifications':
+                        return this.buildNotificationSettingsModal();
+                        
                     case 'connections':
                         return '<h3 class="text-xl font-bold mb-4">Manage Connections</h3>' +
                             '<div class="mb-6 p-4 bg-blue-50 rounded-lg">' +
@@ -1090,6 +1343,29 @@
                     default:
                         return '<p>Unknown modal type</p>';
                 }
+            }
+
+            buildNotificationSettingsModal() {
+                const currentTiming = this.currentUser?.settings?.notification_timing || 3;
+                
+                return '<h3 class="text-xl font-bold mb-4">Notification Settings</h3>' +
+                    '<form data-form="notification-settings">' +
+                    '<div class="space-y-4">' +
+                    '<div>' +
+                    '<label class="block text-sm font-medium mb-2">Notify me about upcoming bills:</label>' +
+                    '<select name="notificationTiming" class="form-input">' +
+                    '<option value="1"' + (currentTiming === 1 ? ' selected' : '') + '>1 day before</option>' +
+                    '<option value="3"' + (currentTiming === 3 ? ' selected' : '') + '>3 days before</option>' +
+                    '<option value="7"' + (currentTiming === 7 ? ' selected' : '') + '>1 week before</option>' +
+                    '<option value="14"' + (currentTiming === 14 ? ' selected' : '') + '>2 weeks before</option>' +
+                    '</select>' +
+                    '</div>' +
+                    '<div class="grid grid-cols-2 gap-3">' +
+                    '<button type="submit" class="btn btn-primary">Save Settings</button>' +
+                    '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
+                    '</div>' +
+                    '</div>' +
+                    '</form>';
             }
 
             buildIncomeModal(isEdit, item) {
@@ -1159,11 +1435,25 @@
                     { value: 'loan', label: 'Loan' },
                     { value: 'other', label: 'Other' }
                 ];
+
+                const recurrenceOptions = [
+                    { value: 'monthly', label: 'Monthly' },
+                    { value: 'bi-monthly', label: 'Every 2 months' },
+                    { value: 'quarterly', label: 'Every 3 months' },
+                    { value: 'semi-annually', label: 'Every 6 months' },
+                    { value: 'annually', label: 'Yearly' }
+                ];
                 
                 let categoryOptions = '';
                 for (const cat of categories) {
                     const selected = item?.category === cat.value ? ' selected' : '';
                     categoryOptions += '<option value="' + cat.value + '"' + selected + '>' + cat.label + '</option>';
+                }
+
+                let recurrenceSelect = '';
+                for (const option of recurrenceOptions) {
+                    const selected = item?.recurrence_interval === option.value ? ' selected' : '';
+                    recurrenceSelect += '<option value="' + option.value + '"' + selected + '>' + option.label + '</option>';
                 }
                 
                 let connectionOptions = '<option value="">Just me (no sharing)</option>';
@@ -1171,11 +1461,26 @@
                     connectionOptions += '<option value="' + conn.id + '">' + conn.name + '</option>';
                 }
                 
+                const recurringChecked = item?.recurring ? ' checked' : '';
+                
+                let recurringSection = '<div class="p-4 bg-purple-50 rounded-lg">' +
+                    '<h4 class="font-medium mb-2">Recurring Bill</h4>' +
+                    '<label class="flex items-center mb-3">' +
+                    '<input type="checkbox" name="recurring" value="true"' + recurringChecked + ' class="mr-2" onchange="window.toggleRecurrenceOptions(this.checked)">' +
+                    '<span class="text-sm">This bill repeats</span>' +
+                    '</label>' +
+                    '<div id="recurrence-options"' + (item?.recurring ? '' : ' style="display:none;"') + '>' +
+                    '<select name="recurrenceInterval" class="form-input">' +
+                    recurrenceSelect +
+                    '</select>' +
+                    '</div>' +
+                    '</div>';
+                
                 let sharingSection = '';
                 if (connections.length > 0) {
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
                         '<h4 class="font-medium mb-2">Share this bill?</h4>' +
-                        '<select name="shareWith" class="form-input mb-3" onchange="toggleSplitType(this.value)">' +
+                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
                         connectionOptions +
                         '</select>' +
                         '<div id="split-options" style="display:none;">' +
@@ -1210,6 +1515,7 @@
                     '<input type="number" name="amount" placeholder="Total Amount" step="0.01" required value="' + amountValue + '" class="form-input">' +
                     '<input type="date" name="dueDate" required value="' + dueDateValue + '" class="form-input">' +
                     '<select name="category" class="form-input">' + categoryOptions + '</select>' +
+                    recurringSection +
                     sharingSection +
                     '<div class="grid grid-cols-2 gap-3">' +
                     '<button type="submit" class="btn btn-primary">' + submitText + ' Bill</button>' +
@@ -1217,6 +1523,26 @@
                     '</div>' +
                     '</div>' +
                     '</form>';
+            }
+
+            getBillStatus(bill) {
+                if (bill.paid) {
+                    return { status: 'Complete', class: 'status-complete' };
+                }
+
+                if (bill.is_shared) {
+                    if (bill.user_paid) {
+                        return { status: 'Waiting for others', class: 'status-waiting-others' };
+                    } else {
+                        return { status: 'Waiting for you', class: 'status-waiting-you' };
+                    }
+                } else {
+                    if (bill.creator_paid) {
+                        return { status: 'Waiting for others', class: 'status-waiting-others' };
+                    } else {
+                        return { status: 'Pending', class: 'status-pending' };
+                    }
+                }
             }
 
             async calculateTotals() {
@@ -1235,10 +1561,12 @@
                 
                 let monthlyBills = 0;
                 bills.forEach(bill => {
-                    if (bill.user_share) {
-                        monthlyBills += bill.user_share;
-                    } else {
-                        monthlyBills += bill.amount;
+                    if (!bill.paid) {
+                        if (bill.user_share) {
+                            monthlyBills += bill.user_share;
+                        } else {
+                            monthlyBills += bill.amount;
+                        }
                     }
                 });
                 
@@ -1258,8 +1586,9 @@
                     const totals = await this.calculateTotals();
                     const incomes = await storage.getUserIncomes();
                     const bills = await storage.getUserBills();
+                    const notifications = await storage.getUpcomingBillNotifications();
                     
-                    app.innerHTML = this.renderApp(totals, incomes, bills);
+                    app.innerHTML = this.renderApp(totals, incomes, bills, notifications);
                 }
             }
 
@@ -1304,7 +1633,7 @@
                     '</div>';
             }
 
-            renderApp(totals, incomes, bills) {
+            renderApp(totals, incomes, bills, notifications) {
                 const userName = this.currentUser?.name || 'User';
                 const tabs = ['dashboard', 'income', 'bills', 'connections'];
                 
@@ -1312,7 +1641,13 @@
                 for (const tab of tabs) {
                     const activeClass = this.activeTab === tab ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700';
                     const tabName = tab.charAt(0).toUpperCase() + tab.slice(1);
-                    tabsHTML += '<button data-action="switch-tab" data-tab="' + tab + '" class="btn py-4 px-4 border-b-2 font-medium text-sm transition whitespace-nowrap ' + activeClass + '">' + tabName + '</button>';
+                    let notificationDot = '';
+                    
+                    if (tab === 'dashboard' && notifications.length > 0) {
+                        notificationDot = '<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">' + notifications.length + '</span>';
+                    }
+                    
+                    tabsHTML += '<button data-action="switch-tab" data-tab="' + tab + '" class="btn py-4 px-4 border-b-2 font-medium text-sm transition whitespace-nowrap relative ' + activeClass + '">' + tabName + notificationDot + '</button>';
                 }
                 
                 const privateModeIcon = this.privateMode ? 
@@ -1321,7 +1656,7 @@
                 
                 let mainContent = '';
                 if (this.activeTab === 'dashboard') {
-                    mainContent = this.renderDashboard(totals);
+                    mainContent = this.renderDashboard(totals, notifications);
                 } else if (this.activeTab === 'income') {
                     mainContent = this.renderIncomeTab(incomes);
                 } else if (this.activeTab === 'bills') {
@@ -1346,6 +1681,11 @@
                     '</div>' +
                     '</div>' +
                     '<div class="flex items-center space-x-2">' +
+                    '<button data-action="show-modal" data-modal="notifications" class="btn p-2">' +
+                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z" />' +
+                    '</svg>' +
+                    '</button>' +
                     '<button data-action="toggle-private" class="btn p-2">' + privateModeIcon + '</button>' +
                     '<button data-action="logout" class="btn p-2">' +
                     '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
@@ -1365,12 +1705,53 @@
                     '</div>';
             }
 
-            renderDashboard(totals) {
+            renderDashboard(totals, notifications) {
                 const incomeBlurClass = this.privateMode ? 'filter blur-sm' : '';
                 const remainingBlurClass = this.privateMode ? 'filter blur-sm' : '';
                 const remainingColorClass = totals.remaining >= 0 ? 'text-green-600' : 'text-red-600';
                 
+                let notificationsSection = '';
+                if (notifications.length > 0) {
+                    let notificationsList = '';
+                    for (const notification of notifications) {
+                        const urgencyClass = notification.urgency === 'urgent' ? 'notification-urgent' : 
+                                           notification.urgency === 'warning' ? 'notification-warning' : 'notification-info';
+                        
+                        let daysText = '';
+                        if (notification.days_until_due === 0) {
+                            daysText = 'Due today';
+                        } else if (notification.days_until_due === 1) {
+                            daysText = 'Due tomorrow';
+                        } else {
+                            daysText = 'Due in ' + notification.days_until_due + ' days';
+                        }
+                        
+                        const userAmount = notification.user_share || notification.amount;
+                        
+                        notificationsList += '<div class="p-3 rounded-lg ' + urgencyClass + ' mb-2">' +
+                            '<div class="flex justify-between items-center">' +
+                            '<div>' +
+                            '<p class="font-medium">' + notification.name + '</p>' +
+                            '<p class="text-sm opacity-75">' + daysText + '</p>' +
+                            '</div>' +
+                            '<p class="font-bold">$' + userAmount.toFixed(2) + '</p>' +
+                            '</div>' +
+                            '</div>';
+                    }
+                    
+                    notificationsSection = '<div class="card card-mobile mb-6">' +
+                        '<h3 class="text-lg font-bold mb-4 flex items-center">' +
+                        '<svg class="w-5 h-5 mr-2 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z" />' +
+                        '</svg>' +
+                        'Upcoming Bills' +
+                        '</h3>' +
+                        notificationsList +
+                        '</div>';
+                }
+                
                 return '<div class="space-y-6 fade-in">' +
+                    notificationsSection +
                     '<div class="grid-responsive">' +
                     '<div class="card card-mobile">' +
                     '<div class="flex items-center justify-between mb-2">' +
@@ -1383,7 +1764,7 @@
                     '</div>' +
                     '<div class="card card-mobile">' +
                     '<div class="flex items-center justify-between mb-2">' +
-                    '<h3 class="text-gray-600 text-sm font-medium">Monthly Bills</h3>' +
+                    '<h3 class="text-gray-600 text-sm font-medium">Pending Bills</h3>' +
                     '<svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />' +
                     '</svg>' +
@@ -1419,11 +1800,11 @@
                     '</svg>' +
                     '<span class="text-sm font-medium">Connect</span>' +
                     '</button>' +
-                    '<button class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">' +
+                    '<button data-action="show-modal" data-modal="notifications" class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">' +
                     '<svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5zM10.5 17H15l-5 5v-5z" />' +
                     '</svg>' +
-                    '<span class="text-sm font-medium">Analytics</span>' +
+                    '<span class="text-sm font-medium">Notifications</span>' +
                     '</button>' +
                     '</div>' +
                     '</div>';
@@ -1499,44 +1880,60 @@
                     for (const bill of bills) {
                         const isShared = bill.is_shared || false;
                         const userAmount = bill.user_share || bill.amount;
-                        const isPaid = bill.user_paid !== undefined ? bill.user_paid : bill.paid;
+                        const status = this.getBillStatus(bill);
                         
-                        const statusIcon = isPaid ? 
-                            '<svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>' :
-                            '<svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+                        const indicators = [];
+                        if (isShared) {
+                            indicators.push('<span class="shared-indicator">Shared</span>');
+                        } else {
+                            indicators.push('<span class="personal-indicator">Personal</span>');
+                        }
                         
-                        const indicator = isShared ? 
-                            '<span class="shared-indicator">Shared</span>' : 
-                            '<span class="personal-indicator">Personal</span>';
+                        if (bill.recurring) {
+                            indicators.push('<span class="recurring-indicator">Recurring</span>');
+                        }
                         
                         const totalInfo = (isShared && bill.amount !== userAmount) ? 
                             '<p class="text-xs text-gray-500">Total: $' + bill.amount.toFixed(2) + '</p>' : '';
                         
-                        const actionButton = !isPaid ? 
-                            '<button data-action="mark-paid" data-bill-id="' + bill.id + '" data-shared="' + isShared + '" class="w-full mt-3 btn btn-success">Mark as Paid</button>' :
-                            '<div class="mt-3 text-center text-green-600 font-medium">✓ Paid' + (bill.paid_date ? ' on ' + new Date(bill.paid_date).toLocaleDateString() : '') + '</div>';
+                        let actionButton = '';
+                        if (status.status === 'Complete') {
+                            actionButton = '<div class="mt-3 text-center text-green-600 font-medium">✓ Complete' + 
+                                          (bill.paid_date ? ' • ' + new Date(bill.paid_date).toLocaleDateString() : '') + '</div>';
+                        } else if (status.status === 'Waiting for others') {
+                            actionButton = '<div class="mt-3 text-center text-orange-600 font-medium">⏳ Waiting for others to pay</div>';
+                        } else {
+                            const shareId = bill.share_id || '';
+                            actionButton = '<button data-action="mark-paid" data-bill-id="' + bill.id + '" data-shared="' + isShared + '" data-share-id="' + shareId + '" class="w-full mt-3 btn btn-success">Mark as Paid</button>';
+                        }
                         
                         billsList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
                             '<div class="flex items-center justify-between mb-3">' +
                             '<div class="flex items-center space-x-4 flex-1">' +
-                            '<div class="w-10 h-10 ' + (isPaid ? 'bg-green-100' : 'bg-red-100') + ' rounded-full flex items-center justify-center">' +
-                            statusIcon +
+                            '<div class="w-10 h-10 ' + (status.status === 'Complete' ? 'bg-green-100' : 'bg-red-100') + ' rounded-full flex items-center justify-center">' +
+                            '<svg class="w-6 h-6 ' + (status.status === 'Complete' ? 'text-green-600' : 'text-red-600') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            (status.status === 'Complete' ? 
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />' :
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />') +
+                            '</svg>' +
                             '</div>' +
                             '<div class="flex-1">' +
-                            '<div class="flex items-center space-x-2 mb-1">' +
+                            '<div class="flex items-center space-x-2 mb-1 flex-wrap">' +
                             '<p class="font-medium">' + bill.name + '</p>' +
-                            indicator +
+                            indicators.join('') +
                             '</div>' +
                             '<p class="text-sm text-gray-600">Due: ' + new Date(bill.due_date).toLocaleDateString() + ' • ' + bill.category + '</p>' +
+                            (bill.recurring ? '<p class="text-xs text-purple-600">Repeats ' + bill.recurrence_interval + '</p>' : '') +
                             '</div>' +
                             '</div>' +
                             '<div class="flex items-center space-x-3">' +
                             '<div class="text-right">' +
                             '<p class="text-lg font-bold">$' + userAmount.toFixed(2) + '</p>' +
                             totalInfo +
+                            '<span class="' + status.class + '">' + status.status + '</span>' +
                             '</div>' +
                             '<button data-action="delete-bill" data-bill-id="' + bill.id + '" class="btn p-2 text-red-600 hover:text-red-800">' +
-                            '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' + 
                             '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
                             '</svg>' +
                             '</button>' +
@@ -1589,9 +1986,13 @@
                             let billsListHTML = '';
                             if (connectionSharedBills.length > 0) {
                                 for (const bill of connectionSharedBills.slice(0, 3)) {
-                                    billsListHTML += '<div class="flex justify-between text-xs">' +
+                                    const status = this.getBillStatus(bill);
+                                    billsListHTML += '<div class="flex justify-between text-xs items-center">' +
                                         '<span>' + bill.name + '</span>' +
+                                        '<div class="text-right">' +
                                         '<span class="font-medium">$' + (bill.user_share || bill.amount).toFixed(2) + '</span>' +
+                                        '<div class="' + status.class + ' text-xs px-1 rounded">' + status.status + '</div>' +
+                                        '</div>' +
                                         '</div>';
                                 }
                                 
@@ -1655,6 +2056,17 @@
                 splitOptions.style.display = shareWithValue ? 'block' : 'none';
             }
         }
+
+        function toggleRecurrenceOptions(isRecurring) {
+            const recurrenceOptions = document.getElementById('recurrence-options');
+            if (recurrenceOptions) {
+                recurrenceOptions.style.display = isRecurring ? 'block' : 'none';
+            }
+        }
+
+        // Attach functions to window for inline event handlers
+        window.toggleSplitType = toggleSplitType;
+        window.toggleRecurrenceOptions = toggleRecurrenceOptions;
 
         // Handle custom split radio change
         document.addEventListener('change', (e) => {
