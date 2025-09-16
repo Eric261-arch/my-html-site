@@ -1201,7 +1201,8 @@
                                 source: data.source,
                                 amount: parseFloat(data.amount),
                                 frequency: data.frequency,
-                                type: data.type
+                                type: data.type,
+                                received_date: data.receivedDate || null
                             };
                             
                             if (formType === 'edit-income' && data.id) {
@@ -1408,6 +1409,7 @@
                     '<div class="space-y-4">' +
                     '<input type="text" name="source" placeholder="Income Source" required value="' + sourceValue + '" class="form-input">' +
                     '<input type="number" name="amount" placeholder="Amount" step="0.01" required value="' + amountValue + '" class="form-input">' +
+                    '<input type="date" name="receivedDate" value="' + (item?.received_date || '') + '" class="form-input" placeholder="Date Received">' +
                     '<select name="frequency" class="form-input">' + frequencyOptions + '</select>' +
                     '<select name="type" class="form-input">' + typeOptions + '</select>' +
                     '<div class="grid grid-cols-2 gap-3">' +
@@ -1503,7 +1505,8 @@
                         '</div>';
                 } else {
                     sharingSection = '<div class="p-4 bg-gray-50 rounded-lg text-center">' +
-                        '<p class="text-sm text-gray-600">Connect with others to share bills</p>' +
+                    '<p class="text-sm text-gray-600">' + income.type + ' • ' + income.frequency + 
+                    (income.received_date ? ' • Received: ' + new Date(income.received_date).toLocaleDateString() : '') + '</p>' +
                         '</div>';
                 }
                 
@@ -2083,7 +2086,3 @@
     </script>
 </body>
 </html>
-
-
-
-
