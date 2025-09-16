@@ -840,6 +840,9 @@
                             .eq('id', shareId);
 
                         if (error) throw error;
+                        
+                        // ✅ ADD THIS LINE:
+                        await this.checkAndCompleteBill(billId);
                     } else {
                         const { error } = await supabase
                             .from('bills')
@@ -851,7 +854,6 @@
                             .eq('user_id', this.user.id);
 
                         if (error) throw error;
-
                         await this.checkAndCompleteBill(billId);
                     }
 
@@ -2809,4 +2811,5 @@
     </script>
 </body>
 </html>
+
 
