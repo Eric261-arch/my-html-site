@@ -207,8 +207,8 @@
             font-weight: 500;
         }
 
-        .recurring-indicator {
-            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        .expense-indicator {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
             color: white;
             font-size: 0.75rem;
             padding: 2px 8px;
@@ -216,8 +216,8 @@
             font-weight: 500;
         }
 
-        .expense-indicator {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        .recurring-indicator {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
             color: white;
             font-size: 0.75rem;
             padding: 2px 8px;
@@ -297,19 +297,30 @@
 
         .receipt-item {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 8px 12px;
+            gap: 8px;
+            padding: 8px;
             background: #f9fafb;
-            border: 1px solid #e5e7eb;
             border-radius: 6px;
             margin-bottom: 8px;
         }
 
-        .receipt-item-remove {
-            color: #ef4444;
+        .receipt-item input {
+            flex: 1;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 14px;
+        }
+
+        .receipt-item button {
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
             cursor: pointer;
-            padding: 4px;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -695,7 +706,7 @@
                 }
             }
 
-            // Enhanced Bill and Expense methods
+            // Enhanced Bill/Expense methods
             async addBill(billData) {
                 try {
                     const billToInsert = {
@@ -704,11 +715,6 @@
                         paid: false,
                         creator_paid: false
                     };
-
-                    // Handle receipt items for expenses
-                    if (billData.category === 'expense' && billData.receiptItems) {
-                        billToInsert.description = JSON.stringify(billData.receiptItems);
-                    }
 
                     const { data, error } = await supabase
                         .from('bills')
@@ -741,6 +747,52 @@
                 }
             }
 
+            async addExpense(expenseData) {
+                try {
+                    const expenseToInsert = {
+                        user_id: this.user.id,
+                        name: expenseData.name,
+                        amount: expenseData.totalAmount,
+                        due_date: expenseData.expenseDate, // Use due_date, not expense_date
+                        category: 'expense',
+                        description: JSON.stringify(expenseData.items || []), // Store receipt items as JSON
+                        paid: false,
+                        creator_paid: false,
+                        shared_with: expenseData.shared_with || [],
+                        splits: expenseData.splits || {}
+                    };
+
+                    const { data, error } = await supabase
+                        .from('bills')
+                        .insert([expenseToInsert])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    // If shared with someone, create bill shares
+                    if (expenseData.shared_with && expenseData.splits) {
+                        const shares = Object.entries(expenseData.splits).map(([userId, amount]) => ({
+                            bill_id: data.id,
+                            user_id: userId,
+                            amount: amount,
+                            paid: false
+                        }));
+
+                        const { error: sharesError } = await supabase
+                            .from('bill_shares')
+                            .insert(shares);
+
+                        if (sharesError) throw sharesError;
+                    }
+
+                    return data;
+                } catch (error) {
+                    console.error('Add expense error:', error);
+                    throw error;
+                }
+            }
+
             async getUserBills() {
                 try {
                     // Get bills owned by user (excluding expenses)
@@ -756,17 +808,18 @@
                     // Get bills shared with user (excluding expenses)
                     const { data: sharedBills, error: sharedError } = await supabase
                         .from('bill_shares')
-                        .select('*, bills(*)')
-                        .eq('user_id', this.user.id);
+                        .select('*, bills!inner(*)')
+                        .eq('user_id', this.user.id)
+                        .neq('bills.category', 'expense');
 
                     if (sharedError) throw sharedError;
 
                     // Combine and format bills
                     const allBills = [...(ownedBills || [])];
                     
-                    // Add shared bills (avoiding duplicates and excluding expenses)
+                    // Add shared bills (avoiding duplicates)
                     sharedBills?.forEach(share => {
-                        if (share.bills.category !== 'expense' && !allBills.find(bill => bill.id === share.bills.id)) {
+                        if (!allBills.find(bill => bill.id === share.bills.id)) {
                             allBills.push({
                                 ...share.bills,
                                 user_share: share.amount,
@@ -821,19 +874,6 @@
                         }
                     });
 
-                    // Parse receipt items
-                    allExpenses.forEach(expense => {
-                        if (expense.description) {
-                            try {
-                                expense.receiptItems = JSON.parse(expense.description);
-                            } catch (e) {
-                                expense.receiptItems = [];
-                            }
-                        } else {
-                            expense.receiptItems = [];
-                        }
-                    });
-
                     return allExpenses;
                 } catch (error) {
                     console.error('Get user expenses error:', error);
@@ -868,7 +908,7 @@
                         if (error) throw error;
                     }
 
-                    // Always check if bill is now complete (FIXED!)
+                    // Check if bill is fully paid and mark as complete
                     await this.checkAndCompleteBill(billId);
 
                     return true;
@@ -947,6 +987,7 @@
                         amount: originalBill.amount,
                         due_date: nextDate.toISOString().split('T')[0],
                         category: originalBill.category,
+                        description: originalBill.description,
                         recurring: true,
                         recurrence_interval: originalBill.recurrence_interval,
                         shared_with: originalBill.shared_with,
@@ -988,12 +1029,6 @@
 
             async updateBill(billId, updates) {
                 try {
-                    // Handle receipt items for expenses
-                    if (updates.category === 'expense' && updates.receiptItems) {
-                        updates.description = JSON.stringify(updates.receiptItems);
-                        delete updates.receiptItems;
-                    }
-
                     const { data, error } = await supabase
                         .from('bills')
                         .update(updates)
@@ -1102,7 +1137,7 @@
                 this.activeTab = 'dashboard';
                 this.privateMode = false;
                 this.loading = false;
-                this.receiptItems = [];
+                this.receiptItems = []; // For tracking expense items
                 this.init();
             }
 
@@ -1238,57 +1273,53 @@
             }
 
             addReceiptItem() {
-                const itemInput = document.getElementById('receipt-item');
-                const priceInput = document.getElementById('receipt-price');
-                
-                if (itemInput && priceInput && itemInput.value.trim() && priceInput.value) {
-                    this.receiptItems.push({
-                        item: itemInput.value.trim(),
-                        price: parseFloat(priceInput.value)
-                    });
-                    
-                    itemInput.value = '';
-                    priceInput.value = '';
-                    
-                    this.updateReceiptItemsDisplay();
-                    this.updateExpenseTotal();
-                }
+                this.receiptItems.push({ name: '', amount: 0 });
+                this.updateReceiptItemsDisplay();
             }
 
             removeReceiptItem(index) {
                 this.receiptItems.splice(index, 1);
                 this.updateReceiptItemsDisplay();
-                this.updateExpenseTotal();
             }
 
             updateReceiptItemsDisplay() {
-                const container = document.getElementById('receipt-items-list');
+                const container = document.getElementById('receipt-items');
                 if (!container) return;
 
-                container.innerHTML = '';
+                let total = 0;
+                let itemsHTML = '';
+
                 this.receiptItems.forEach((item, index) => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'receipt-item';
-                    itemDiv.innerHTML = `
-                        <span>${item.item}</span>
-                        <div class="flex items-center space-x-2">
-                            <span>$${item.price.toFixed(2)}</span>
-                            <button type="button" data-action="remove-receipt-item" data-index="${index}" class="receipt-item-remove">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
+                    total += parseFloat(item.amount) || 0;
+                    itemsHTML += `
+                        <div class="receipt-item">
+                            <input type="text" placeholder="Item name" value="${item.name}" 
+                                   onchange="window.app.updateReceiptItem(${index}, 'name', this.value)">
+                            <input type="number" placeholder="0.00" step="0.01" value="${item.amount}"
+                                   onchange="window.app.updateReceiptItem(${index}, 'amount', this.value)">
+                            <button type="button" data-action="remove-receipt-item" data-index="${index}">Remove</button>
                         </div>
                     `;
-                    container.appendChild(itemDiv);
                 });
+
+                container.innerHTML = itemsHTML;
+                
+                const totalDisplay = document.getElementById('total-amount');
+                if (totalDisplay) {
+                    totalDisplay.textContent = `Total: $${total.toFixed(2)}`;
+                }
+
+                // Update hidden total input
+                const totalInput = document.querySelector('input[name="totalAmount"]');
+                if (totalInput) {
+                    totalInput.value = total.toFixed(2);
+                }
             }
 
-            updateExpenseTotal() {
-                const totalInput = document.getElementById('expense-total');
-                if (totalInput) {
-                    const total = this.receiptItems.reduce((sum, item) => sum + item.price, 0);
-                    totalInput.value = total.toFixed(2);
+            updateReceiptItem(index, field, value) {
+                if (this.receiptItems[index]) {
+                    this.receiptItems[index][field] = field === 'amount' ? parseFloat(value) || 0 : value;
+                    this.updateReceiptItemsDisplay();
                 }
             }
 
@@ -1409,13 +1440,11 @@
                             break;
 
                         case 'add-expense':
-                        case 'edit-expense':
                             const expenseData = {
                                 name: data.name,
-                                amount: parseFloat(data.amount),
-                                due_date: data.expenseDate, // Use due_date, not expense_date
-                                category: 'expense',
-                                receiptItems: this.receiptItems
+                                expenseDate: data.expenseDate,
+                                totalAmount: parseFloat(data.totalAmount),
+                                items: this.receiptItems.filter(item => item.name && item.amount > 0)
                             };
 
                             // Handle shared expenses
@@ -1424,22 +1453,17 @@
                                 expenseData.splits = {};
                                 
                                 if (data.splitType === 'equal') {
-                                    expenseData.splits[this.currentUser.id] = expenseData.amount / 2;
-                                    expenseData.splits[data.shareWith] = expenseData.amount / 2;
+                                    expenseData.splits[this.currentUser.id] = expenseData.totalAmount / 2;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount / 2;
                                 } else if (data.splitType === 'custom') {
                                     const userAmount = parseFloat(data.userAmount) || 0;
                                     expenseData.splits[this.currentUser.id] = userAmount;
-                                    expenseData.splits[data.shareWith] = expenseData.amount - userAmount;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount - userAmount;
                                 }
                             }
-                            
-                            if (formType === 'edit-expense' && data.id) {
-                                await storage.updateBill(data.id, expenseData);
-                            } else {
-                                await storage.addBill(expenseData);
-                            }
-                            
-                            this.receiptItems = [];
+
+                            await storage.addExpense(expenseData);
+                            this.receiptItems = []; // Reset receipt items
                             this.closeModal();
                             this.render();
                             break;
@@ -1489,7 +1513,7 @@
             closeModal() {
                 const modal = document.querySelector('.fixed.inset-0');
                 if (modal) modal.remove();
-                this.receiptItems = [];
+                this.receiptItems = []; // Reset receipt items when closing modal
             }
 
             async getModalContent(type, itemId) {
@@ -1503,12 +1527,6 @@
                     } else if (type === 'bill') {
                         const bills = await storage.getUserBills();
                         item = bills.find(b => b.id === itemId);
-                    } else if (type === 'expense') {
-                        const expenses = await storage.getUserExpenses();
-                        item = expenses.find(e => e.id === itemId);
-                        if (item && item.receiptItems) {
-                            this.receiptItems = [...item.receiptItems];
-                        }
                     }
                 }
 
@@ -1545,7 +1563,7 @@
 
                     case 'expense':
                         const expenseConnections = await storage.getUserConnections();
-                        return this.buildExpenseModal(isEdit, item, expenseConnections);
+                        return this.buildExpenseModal(expenseConnections);
 
                     default:
                         return '<p>Unknown modal type</p>';
@@ -1711,7 +1729,7 @@
                         '</div>';
                 } else {
                     sharingSection = '<div class="p-4 bg-gray-50 rounded-lg text-center">' +
-                        '<p class="text-sm text-gray-600">Connect with others to share bills</p>' +
+                        '<p class="text-sm text-gray-600">No connections available. Add connections to share bills.</p>' +
                         '</div>';
                 }
                 
@@ -1733,14 +1751,8 @@
                     '</form>';
             }
 
-            buildExpenseModal(isEdit, item, connections) {
-                const editTitle = isEdit ? 'Edit' : 'Add';
-                const formType = isEdit ? 'edit-expense' : 'add-expense';
-                const hiddenInput = isEdit ? '<input type="hidden" name="id" value="' + item.id + '">' : '';
-                const nameValue = item?.name || '';
-                const amountValue = item?.amount || '';
-                const expenseDateValue = item?.due_date || '';
-                const submitText = isEdit ? 'Update' : 'Add';
+            buildExpenseModal(connections) {
+                this.receiptItems = [{ name: '', amount: 0 }]; // Initialize with one empty item
                 
                 let connectionOptions = '<option value="">Just me (no sharing)</option>';
                 for (const conn of connections) {
@@ -1772,44 +1784,33 @@
                         '</div>' +
                         '</div>' +
                         '</div>';
+                } else {
+                    sharingSection = '<div class="p-4 bg-gray-50 rounded-lg text-center">' +
+                        '<p class="text-sm text-gray-600">No connections available. Add connections to share expenses.</p>' +
+                        '</div>';
                 }
-
-                const receiptSection = '<div class="p-4 bg-orange-50 rounded-lg">' +
-                    '<h4 class="font-medium mb-2">Receipt Items</h4>' +
-                    '<div class="grid grid-cols-2 gap-2 mb-3">' +
-                    '<input type="text" id="receipt-item" placeholder="Item name" class="form-input">' +
-                    '<div class="flex space-x-2">' +
-                    '<input type="number" id="receipt-price" placeholder="Price" step="0.01" class="form-input">' +
-                    '<button type="button" data-action="add-receipt-item" class="btn btn-primary">Add</button>' +
-                    '</div>' +
-                    '</div>' +
-                    '<div id="receipt-items-list" class="mb-3"></div>' +
-                    '<div class="border-t pt-3">' +
-                    '<label class="block text-sm font-medium mb-1">Total Amount:</label>' +
-                    '<input type="number" id="expense-total" name="amount" placeholder="Total Amount" step="0.01" required value="' + amountValue + '" class="form-input" readonly>' +
-                    '</div>' +
-                    '</div>';
                 
-                return '<h3 class="text-xl font-bold mb-4">' + editTitle + ' Expense</h3>' +
-                    '<form data-form="' + formType + '">' +
-                    hiddenInput +
+                return '<h3 class="text-xl font-bold mb-4">Add Expense</h3>' +
+                    '<form data-form="add-expense">' +
                     '<div class="space-y-4">' +
-                    '<input type="text" name="name" placeholder="Expense Name" required value="' + nameValue + '" class="form-input">' +
-                    '<input type="date" name="expenseDate" required value="' + expenseDateValue + '" class="form-input">' +
-                    receiptSection +
+                    '<input type="text" name="name" placeholder="Expense Name" required class="form-input">' +
+                    '<input type="date" name="expenseDate" required class="form-input">' +
+                    '<div class="space-y-3">' +
+                    '<div class="flex justify-between items-center">' +
+                    '<h4 class="font-medium">Receipt Items</h4>' +
+                    '<button type="button" data-action="add-receipt-item" class="btn btn-secondary text-sm">Add Item</button>' +
+                    '</div>' +
+                    '<div id="receipt-items"></div>' +
+                    '<div id="total-amount" class="text-right font-bold">Total: $0.00</div>' +
+                    '<input type="hidden" name="totalAmount" value="0">' +
+                    '</div>' +
                     sharingSection +
                     '<div class="grid grid-cols-2 gap-3">' +
-                    '<button type="submit" class="btn btn-primary">' + submitText + ' Expense</button>' +
+                    '<button type="submit" class="btn btn-primary">Add Expense</button>' +
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
                     '</div>' +
                     '</div>' +
-                    '</form>' +
-                    '<script>' +
-                    'setTimeout(() => {' +
-                    'window.app.updateReceiptItemsDisplay();' +
-                    'window.app.updateExpenseTotal();' +
-                    '}, 100);' +
-                    '</script>';
+                    '</form>';
             }
 
             getBillStatus(bill) {
@@ -1858,13 +1859,13 @@
                     }
                 });
 
-                let monthlyExpenses = 0;
+                let pendingExpenses = 0;
                 expenses.forEach(expense => {
                     if (!expense.paid) {
                         if (expense.user_share) {
-                            monthlyExpenses += expense.user_share;
+                            pendingExpenses += expense.user_share;
                         } else {
-                            monthlyExpenses += expense.amount;
+                            pendingExpenses += expense.amount;
                         }
                     }
                 });
@@ -1872,8 +1873,8 @@
                 return {
                     income: monthlyIncome,
                     bills: monthlyBills,
-                    expenses: monthlyExpenses,
-                    remaining: monthlyIncome - monthlyBills - monthlyExpenses
+                    expenses: pendingExpenses,
+                    remaining: monthlyIncome - monthlyBills - pendingExpenses
                 };
             }
 
@@ -2078,7 +2079,7 @@
                     '<div class="flex items-center justify-between mb-2">' +
                     '<h3 class="text-gray-600 text-sm font-medium">Pending Expenses</h3>' +
                     '<svg class="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />' +
                     '</svg>' +
                     '</div>' +
                     '<p class="text-2xl font-bold">$' + totals.expenses.toFixed(2) + '</p>' +
@@ -2100,7 +2101,7 @@
                     '</svg>' +
                     '<span class="text-sm font-medium">Add Income</span>' +
                     '</button>' +
-                    '<button data-action="show-modal" data-modal="bill" class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">' +
+                    '<button data-action="show-modal" data-modal="bill" class="card card-mobile hover-shadow-lg transition flex flex-col items-center space-y-2 btn">' +
                     '<svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />' +
                     '</svg>' +
@@ -2108,7 +2109,7 @@
                     '</button>' +
                     '<button data-action="show-modal" data-modal="expense" class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">' +
                     '<svg class="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />' +
                     '</svg>' +
                     '<span class="text-sm font-medium">Add Expense</span>' +
                     '</button>' +
@@ -2120,7 +2121,7 @@
                     '</button>' +
                     '<button data-action="show-modal" data-modal="notifications" class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">' +
                     '<svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5zM10.5 17H15l-5 5v-5z" />' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z" />' +
                     '</svg>' +
                     '<span class="text-sm font-medium">Notifications</span>' +
                     '</button>' +
@@ -2289,10 +2290,10 @@
                 if (expenses.length === 0) {
                     expensesContent = '<div class="text-center py-12">' +
                         '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />' +
                         '</svg>' +
                         '<p class="text-gray-500">No expenses added yet</p>' +
-                        '<p class="text-sm text-gray-400 mt-2">Add your expenses to track spending</p>' +
+                        '<p class="text-sm text-gray-400 mt-2">Add your expenses to track shared costs</p>' +
                         '</div>';
                 } else {
                     let expensesList = '';
@@ -2301,31 +2302,36 @@
                         const userAmount = expense.user_share || expense.amount;
                         const status = this.getBillStatus(expense);
                         
+                        // Parse receipt items if they exist
+                        let receiptItems = [];
+                        try {
+                            if (expense.description) {
+                                receiptItems = JSON.parse(expense.description);
+                            }
+                        } catch (e) {
+                            // If description is not JSON, treat as simple text
+                        }
+                        
                         const indicators = [];
+                        indicators.push('<span class="expense-indicator">Expense</span>');
                         if (isShared) {
                             indicators.push('<span class="shared-indicator">Shared</span>');
                         } else {
                             indicators.push('<span class="personal-indicator">Personal</span>');
                         }
-                        indicators.push('<span class="expense-indicator">Expense</span>');
                         
                         const totalInfo = (isShared && expense.amount !== userAmount) ? 
                             '<p class="text-xs text-gray-500">Total: $' + expense.amount.toFixed(2) + '</p>' : '';
                         
-                        let receiptItemsDisplay = '';
-                        if (expense.receiptItems && expense.receiptItems.length > 0) {
-                            receiptItemsDisplay = '<div class="mt-2 text-xs text-gray-600">' +
-                                '<p class="font-medium mb-1">Items:</p>' +
-                                '<div class="space-y-1">';
-                            
-                            expense.receiptItems.forEach(item => {
-                                receiptItemsDisplay += '<div class="flex justify-between">' +
-                                    '<span>' + item.item + '</span>' +
-                                    '<span>$' + item.price.toFixed(2) + '</span>' +
-                                    '</div>';
+                        let receiptItemsHTML = '';
+                        if (receiptItems.length > 0) {
+                            receiptItemsHTML = '<div class="mt-2 text-xs text-gray-600">' +
+                                '<p class="font-medium">Items:</p>' +
+                                '<ul class="list-disc list-inside">';
+                            receiptItems.forEach(item => {
+                                receiptItemsHTML += '<li>' + item.name + ' - $' + item.amount.toFixed(2) + '</li>';
                             });
-                            
-                            receiptItemsDisplay += '</div></div>';
+                            receiptItemsHTML += '</ul></div>';
                         }
                         
                         let actionButton = '';
@@ -2346,7 +2352,7 @@
                             '<svg class="w-6 h-6 ' + (status.status === 'Complete' ? 'text-green-600' : 'text-orange-600') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                             (status.status === 'Complete' ? 
                                 '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />' :
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />') +
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />') +
                             '</svg>' +
                             '</div>' +
                             '<div class="flex-1">' +
@@ -2355,7 +2361,7 @@
                             indicators.join('') +
                             '</div>' +
                             '<p class="text-sm text-gray-600">Date: ' + new Date(expense.due_date).toLocaleDateString() + '</p>' +
-                            receiptItemsDisplay +
+                            receiptItemsHTML +
                             '</div>' +
                             '</div>' +
                             '<div class="flex items-center space-x-3">' +
@@ -2397,7 +2403,7 @@
                     const connections = await storage.getUserConnections();
                     const bills = await storage.getUserBills();
                     const expenses = await storage.getUserExpenses();
-                    const sharedItems = [...bills, ...expenses].filter(item => item.is_shared);
+                    const allShared = [...bills, ...expenses].filter(item => item.is_shared);
                     
                     let connectionsHTML = '';
                     
@@ -2407,12 +2413,12 @@
                             '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
                             '</svg>' +
                             '<p class="text-gray-500">No connections yet</p>' +
-                            '<p class="text-sm text-gray-400 mt-2">Connect with family or roommates to share bills</p>' +
+                            '<p class="text-sm text-gray-400 mt-2">Connect with family or roommates to share bills and expenses</p>' +
                             '</div>';
                     } else {
                         let connectionCards = '';
                         for (const connection of connections) {
-                            const connectionSharedItems = sharedItems.filter(item => 
+                            const connectionSharedItems = allShared.filter(item => 
                                 item.shared_with && item.shared_with.includes(connection.id)
                             );
                             
@@ -2420,8 +2426,9 @@
                             if (connectionSharedItems.length > 0) {
                                 for (const item of connectionSharedItems.slice(0, 3)) {
                                     const status = this.getBillStatus(item);
+                                    const itemType = item.category === 'expense' ? 'Expense' : 'Bill';
                                     itemsListHTML += '<div class="flex justify-between text-xs items-center">' +
-                                        '<span>' + item.name + '</span>' +
+                                        '<span>' + item.name + ' (' + itemType + ')</span>' +
                                         '<div class="text-right">' +
                                         '<span class="font-medium">$' + (item.user_share || item.amount).toFixed(2) + '</span>' +
                                         '<div class="' + status.class + ' text-xs px-1 rounded">' + status.status + '</div>' +
@@ -2511,8 +2518,19 @@
             }
         });
 
-        // Initialize app
-        const app = new SmartBudgetApp();
+        // Initialize app after DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const app = new SmartBudgetApp();
+                
+                // Update receipt items display after modal loads
+                setTimeout(() => {
+                    if (window.app && window.app.updateReceiptItemsDisplay) {
+                        window.app.updateReceiptItemsDisplay();
+                    }
+                }, 500);
+            }, 100);
+        });
     </script>
 </body>
 </html>
