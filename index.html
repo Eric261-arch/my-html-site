@@ -831,6 +831,7 @@
             async markBillPaid(billId, isShared = false, shareId = null) {
                 try {
                     if (isShared && shareId) {
+                        // Update the share
                         const { error } = await supabase
                             .from('bill_shares')
                             .update({
@@ -841,9 +842,19 @@
 
                         if (error) throw error;
                         
-                        // ✅ ADD THIS LINE:
-                        await this.checkAndCompleteBill(billId);
+                        // Get the bill to check if we're the creator
+                        const { data: bill } = await supabase
+                            .from('bills')
+                            .select('user_id')
+                            .eq('id', billId)
+                            .single();
+                            
+                        // Only creator can complete the bill
+                        if (bill && bill.user_id === this.user.id) {
+                            await this.checkAndCompleteBill(billId);
+                        }
                     } else {
+                        // Creator paying their portion
                         const { error } = await supabase
                             .from('bills')
                             .update({
