@@ -337,7 +337,12 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwYWdicWRzaHJ5d2FnZG55bWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwNjc0OTIsImV4cCI6MjA3MzY0MzQ5Mn0.VKV8kHE8wwgePus2l8DoZusQa8LE3afYbUzFoxwKM2A';
 
         // Initialize Supabase
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let supabase;
+        if (window.supabase) {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } else {
+            console.error('Supabase library not loaded');
+        }
 
         // Enhanced Supabase Service
         class SupabaseService {
@@ -374,7 +379,9 @@
 
             showOfflineBanner(show) {
                 const banner = document.getElementById('offline-banner');
-                banner.classList.toggle('show', show);
+                if (banner) {
+                    banner.classList.toggle('show', show);
+                }
             }
 
             // Authentication methods
@@ -1258,18 +1265,23 @@
             }
 
             async init() {
-                const user = await storage.getCurrentUser();
-                if (user) {
-                    const profile = await storage.getUserProfile();
-                    if (profile) {
-                        this.currentUser = profile;
-                        this.currentView = 'app';
+                try {
+                    const user = await storage.getCurrentUser();
+                    if (user) {
+                        const profile = await storage.getUserProfile();
+                        if (profile) {
+                            this.currentUser = profile;
+                            this.currentView = 'app';
+                        } else {
+                            this.showError('Failed to load user profile');
+                        }
                     }
+                    await this.render();
+                    this.attachEventListeners();
+                } catch (error) {
+                    console.error('Initialization error:', error);
+                    this.showError('Failed to initialize app. Please try again.');
                 }
-                
-                this.render();
-                this.attachEventListeners();
-                window.app = this;
             }
 
             handleSignOut() {
@@ -1305,7 +1317,9 @@
             setLoading(isLoading) {
                 this.loading = isLoading;
                 const app = document.getElementById('app');
-                app.classList.toggle('loading', isLoading);
+                if (app) {
+                    app.classList.toggle('loading', isLoading);
+                }
             }
 
             async handleAction(action, element) {
@@ -1319,16 +1333,16 @@
                         
                         case 'toggle-private':
                             this.privateMode = !this.privateMode;
-                            this.render();
+                            await this.render();
                             break;
                         
                         case 'switch-tab':
                             this.activeTab = element.dataset.tab;
-                            this.render();
+                            await this.render();
                             break;
                         
                         case 'show-modal':
-                            this.showModal(element.dataset.modal, element.dataset.id);
+                            await this.showModal(element.dataset.modal, element.dataset.id);
                             break;
                         
                         case 'close-modal':
@@ -1339,38 +1353,46 @@
                             const isShared = element.dataset.shared === 'true';
                             const shareId = element.dataset.shareId;
                             await storage.markBillPaid(element.dataset.billId, isShared, shareId);
-                            this.render(); // Refresh to show updated status
+                            await this.render(); // Refresh to show updated status
                             break;
                         
                         case 'delete-income':
                             if (confirm('Are you sure you want to delete this income source?')) {
                                 await storage.deleteIncome(element.dataset.incomeId);
-                                this.render();
+                                await this.render();
                             }
                             break;
                         
                         case 'delete-bill':
                             if (confirm('Are you sure you want to delete this bill?')) {
                                 await storage.deleteBill(element.dataset.billId);
-                                this.render();
+                                await this.render();
                             }
                             break;
 
                         case 'remove-connection':
                             if (confirm('Remove this connection? This will also remove any shared bills.')) {
                                 await storage.removeConnection(element.dataset.connectionId);
-                                this.render();
+                                await this.render();
                             }
                             break;
                         
                         case 'switch-to-signup':
-                            document.getElementById('login-form').style.display = 'none';
-                            document.getElementById('signup-form').style.display = 'block';
+                            const loginForm = document.getElementById('login-form');
+                            const signupForm = document.getElementById('signup-form');
+                            if (loginForm && signupForm) {
+                                loginForm.style.display = 'none';
+                                signupForm.style.display = 'block';
+                            }
                             break;
                         
                         case 'switch-to-login':
-                            document.getElementById('signup-form').style.display = 'none';
-                            document.getElementById('login-form').style.display = 'block';
+                            const loginForm2 = document.getElementById('login-form');
+                            const signupForm2 = document.getElementById('signup-form');
+                            if (loginForm2 && signupForm2) {
+                                signupForm2.style.display = 'none';
+                                loginForm2.style.display = 'block';
+                            }
                             break;
 
                         case 'add-receipt-item':
@@ -1410,16 +1432,29 @@
                     itemsHTML += `
                         <div class="receipt-item">
                             <input type="text" placeholder="Item name" value="${item.name}" 
-                                   onchange="window.app.updateReceiptItem(${index}, 'name', this.value)">
+                                   data-receipt-index="${index}" data-receipt-field="name" class="receipt-name">
                             <input type="number" placeholder="0.00" step="0.01" value="${item.amount}"
-                                   onchange="window.app.updateReceiptItem(${index}, 'amount', this.value)">
+                                   data-receipt-index="${index}" data-receipt-field="amount" class="receipt-amount">
                             <button type="button" data-action="remove-receipt-item" data-index="${index}">Remove</button>
                         </div>
                     `;
                 });
 
                 container.innerHTML = itemsHTML;
-                
+
+                // Attach event listeners for receipt item inputs
+                container.querySelectorAll('.receipt-name, .receipt-amount').forEach(input => {
+                    input.addEventListener('change', (e) => {
+                        const index = parseInt(e.target.dataset.receiptIndex);
+                        const field = e.target.dataset.receiptField;
+                        const value = field === 'amount' ? parseFloat(e.target.value) || 0 : e.target.value;
+                        if (this.receiptItems[index]) {
+                            this.receiptItems[index][field] = value;
+                            this.updateReceiptItemsDisplay();
+                        }
+                    });
+                });
+
                 const totalDisplay = document.getElementById('total-amount');
                 if (totalDisplay) {
                     totalDisplay.textContent = `Total: $${total.toFixed(2)}`;
@@ -1450,7 +1485,7 @@
                                 const profile = await storage.getUserProfile();
                                 this.currentUser = profile;
                                 this.currentView = 'app';
-                                this.render();
+                                await this.render();
                             }
                             break;
                         
@@ -1462,7 +1497,7 @@
                                 const profile = await storage.getUserProfile();
                                 this.currentUser = profile;
                                 this.currentView = 'app';
-                                this.render();
+                                await this.render();
                             }
                             break;
 
@@ -1477,13 +1512,17 @@
                             this.currentUser.settings = updatedSettings;
                             this.showSuccess('Notification settings updated!');
                             this.closeModal();
-                            this.render();
+                            await this.render();
                             break;
 
                         case 'generate-invite':
                             const invitation = await storage.generateInviteCode();
-                            await navigator.clipboard.writeText(invitation.code);
-                            this.showSuccess('Invite code ' + invitation.code + ' copied to clipboard! Valid for 7 days.');
+                            try {
+                                await navigator.clipboard.writeText(invitation.code);
+                                this.showSuccess('Invite code ' + invitation.code + ' copied to clipboard! Valid for 7 days.');
+                            } catch (error) {
+                                this.showSuccess('Invite code: ' + invitation.code + ' (please copy manually). Valid for 7 days.');
+                            }
                             this.closeModal();
                             break;
 
@@ -1497,7 +1536,7 @@
                             await storage.acceptInvitation(foundInvitation.id, data.inviteCode);
                             this.showSuccess('Connection established successfully!');
                             this.closeModal();
-                            this.render();
+                            await this.render();
                             break;
                         
                         case 'add-income':
@@ -1516,7 +1555,7 @@
                                 await storage.addIncome(incomeData);
                             }
                             this.closeModal();
-                            this.render();
+                            await this.render();
                             break;
                         
                         case 'add-bill':
@@ -1526,8 +1565,8 @@
                                 amount: parseFloat(data.amount),
                                 due_date: data.dueDate,
                                 category: data.category,
-                                recurring: data.recurring === 'true',
-                                recurrence_interval: data.recurring === 'true' ? data.recurrenceInterval : null
+                                recurring: data.recurring === 'on',
+                                recurrence_interval: data.recurring === 'on' ? data.recurrenceInterval : null
                             };
 
                             // Handle shared bills
@@ -1551,7 +1590,7 @@
                                 await storage.addBill(billData);
                             }
                             this.closeModal();
-                            this.render();
+                            await this.render();
                             break;
 
                         case 'add-expense':
@@ -1580,7 +1619,7 @@
                             await storage.addExpense(expenseData);
                             this.receiptItems = [];
                             this.closeModal();
-                            this.render();
+                            await this.render();
                             break;
                     }
                 } catch (error) {
@@ -1618,6 +1657,37 @@
                 modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 fade-in';
                 modal.innerHTML = '<div class="glass rounded-2xl p-6 w-full max-w-md max-h-screen overflow-y-auto">' + modalContent + '</div>';
                 document.body.appendChild(modal);
+                
+                // Attach event listeners for modal interactions
+                const shareWithSelect = modal.querySelector('select[name="shareWith"]');
+                if (shareWithSelect) {
+                    shareWithSelect.addEventListener('change', (e) => {
+                        const splitOptions = modal.querySelector('#split-options');
+                        if (splitOptions) {
+                            splitOptions.style.display = e.target.value ? 'block' : 'none';
+                        }
+                    });
+                }
+                
+                const recurringCheckbox = modal.querySelector('input[name="recurring"]');
+                if (recurringCheckbox) {
+                    recurringCheckbox.addEventListener('change', (e) => {
+                        const recurrenceOptions = modal.querySelector('#recurrence-options');
+                        if (recurrenceOptions) {
+                            recurrenceOptions.style.display = e.target.checked ? 'block' : 'none';
+                        }
+                    });
+                }
+                
+                const splitTypeRadios = modal.querySelectorAll('input[name="splitType"]');
+                splitTypeRadios.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        const customSplit = modal.querySelector('#custom-split');
+                        if (customSplit) {
+                            customSplit.style.display = e.target.value === 'custom' ? 'block' : 'none';
+                        }
+                    });
+                });
                 
                 setTimeout(() => {
                     const firstInput = modal.querySelector('input, select, textarea');
@@ -1807,7 +1877,7 @@
                 let recurringSection = '<div class="p-4 bg-purple-50 rounded-lg">' +
                     '<h4 class="font-medium mb-2">Recurring Bill</h4>' +
                     '<label class="flex items-center mb-3">' +
-                    '<input type="checkbox" name="recurring" value="true"' + recurringChecked + ' class="mr-2" onchange="window.toggleRecurrenceOptions(this.checked)">' +
+                    '<input type="checkbox" name="recurring"' + recurringChecked + ' class="mr-2">' +
                     '<span class="text-sm">This bill repeats</span>' +
                     '</label>' +
                     '<div id="recurrence-options"' + (item?.recurring ? '' : ' style="display:none;"') + '>' +
@@ -1821,7 +1891,7 @@
                 if (connections.length > 0) {
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
                         '<h4 class="font-medium mb-2">Share this bill?</h4>' +
-                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        '<select name="shareWith" class="form-input mb-3">' +
                         connectionOptions +
                         '</select>' +
                         '<div id="split-options" style="display:none;">' +
@@ -1868,6 +1938,7 @@
 
             buildExpenseModal(connections) {
                 this.receiptItems = [{ name: '', amount: 0 }];
+                this.updateReceiptItemsDisplay();
                 
                 let connectionOptions = '<option value="">Just me (no sharing)</option>';
                 for (const conn of connections) {
@@ -1878,7 +1949,7 @@
                 if (connections.length > 0) {
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
                         '<h4 class="font-medium mb-2">Share this expense?</h4>' +
-                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        '<select name="shareWith" class="form-input mb-3">' +
                         connectionOptions +
                         '</select>' +
                         '<div id="split-options" style="display:none;">' +
@@ -2001,6 +2072,7 @@
 
             async render() {
                 const app = document.getElementById('app');
+                if (!app) return;
                 
                 if (this.currentView === 'login') {
                     app.innerHTML = this.renderLogin();
@@ -2012,7 +2084,29 @@
                     const notifications = await storage.getUpcomingBillNotifications();
                     const history = await storage.getUserHistory();
                     
-                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, notifications, history);
+                    let mainContent = '';
+                    switch (this.activeTab) {
+                        case 'dashboard':
+                            mainContent = this.renderDashboard(totals, notifications);
+                            break;
+                        case 'income':
+                            mainContent = this.renderIncomeTab(incomes);
+                            break;
+                        case 'bills':
+                            mainContent = this.renderBillsTab(bills.filter(b => !b.paid && !b.fully_paid));
+                            break;
+                        case 'expenses':
+                            mainContent = this.renderExpensesTab(expenses.filter(e => !e.paid && !e.fully_paid));
+                            break;
+                        case 'history':
+                            mainContent = this.renderHistoryTab(history);
+                            break;
+                        case 'connections':
+                            mainContent = await this.renderConnectionsTab();
+                            break;
+                    }
+                    
+                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, notifications, history, mainContent);
                 }
             }
 
@@ -2057,7 +2151,7 @@
                     '</div>';
             }
 
-            renderApp(totals, incomes, bills, expenses, notifications, history) {
+            renderApp(totals, incomes, bills, expenses, notifications, history, mainContent) {
                 const userName = this.currentUser?.name || 'User';
                 const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history', 'connections'];
                 
@@ -2077,21 +2171,6 @@
                 const privateModeIcon = this.privateMode ? 
                     '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>' :
                     '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>';
-                
-                let mainContent = '';
-                if (this.activeTab === 'dashboard') {
-                    mainContent = this.renderDashboard(totals, notifications);
-                } else if (this.activeTab === 'income') {
-                    mainContent = this.renderIncomeTab(incomes);
-                } else if (this.activeTab === 'bills') {
-                    mainContent = this.renderBillsTab(bills.filter(b => !b.paid && !b.fully_paid));
-                } else if (this.activeTab === 'expenses') {
-                    mainContent = this.renderExpensesTab(expenses.filter(e => !e.paid && !e.fully_paid));
-                } else if (this.activeTab === 'history') {
-                    mainContent = this.renderHistoryTab(history);
-                } else if (this.activeTab === 'connections') {
-                    mainContent = this.renderConnectionsTab();
-                }
                 
                 return '<div class="min-h-screen bg-gray-50">' +
                     '<header class="gradient-bg text-white shadow-lg sticky top-0 z-40">' +
@@ -2440,7 +2519,8 @@
                                 receiptItems = JSON.parse(expense.description);
                             }
                         } catch (e) {
-                            // If description is not JSON, treat as simple text
+                            console.warn('Failed to parse expense description:', expense.description);
+                            receiptItems = [];
                         }
                         
                         const indicators = [];
@@ -2529,7 +2609,6 @@
                     '</div>';
             }
 
-            // NEW: History tab for completed bills and expenses
             renderHistoryTab(history) {
                 let historyContent = '';
                 
@@ -2555,7 +2634,8 @@
                                 receiptItems = JSON.parse(item.description);
                             }
                         } catch (e) {
-                            // If description is not JSON, treat as simple text
+                            console.warn('Failed to parse item description:', item.description);
+                            receiptItems = [];
                         }
                         
                         const indicators = [];
@@ -2623,139 +2703,91 @@
                     '</div>';
             }
 
-            renderConnectionsTab() {
-                // This will be populated after render, since it needs async data
-                setTimeout(async () => {
-                    const connections = await storage.getUserConnections();
-                    const bills = await storage.getUserBills();
-                    const expenses = await storage.getUserExpenses();
-                    const allShared = [...bills, ...expenses].filter(item => item.is_shared);
-                    
-                    let connectionsHTML = '';
-                    
-                    if (connections.length === 0) {
-                        connectionsHTML = '<div class="text-center py-12">' +
-                            '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
-                            '</svg>' +
-                            '<p class="text-gray-500">No connections yet</p>' +
-                            '<p class="text-sm text-gray-400 mt-2">Connect with family or roommates to share bills and expenses</p>' +
-                            '</div>';
-                    } else {
-                        let connectionCards = '';
-                        for (const connection of connections) {
-                            const connectionSharedItems = allShared.filter(item => 
-                                item.shared_with && item.shared_with.includes(connection.id)
-                            );
-                            
-                            let itemsListHTML = '';
-                            if (connectionSharedItems.length > 0) {
-                                for (const item of connectionSharedItems.slice(0, 3)) {
-                                    const status = this.getBillStatus(item);
-                                    const itemType = item.category === 'expense' ? 'Expense' : 'Bill';
-                                    itemsListHTML += '<div class="flex justify-between text-xs items-center">' +
-                                        '<span>' + item.name + ' (' + itemType + ')</span>' +
-                                        '<div class="text-right">' +
-                                        '<span class="font-medium">$' + (item.user_share || item.amount).toFixed(2) + '</span>' +
-                                        '<div class="' + status.class + ' text-xs px-1 rounded">' + status.status + '</div>' +
-                                        '</div>' +
-                                        '</div>';
-                                }
-                                
-                                if (connectionSharedItems.length > 3) {
-                                    itemsListHTML += '<div class="text-xs text-gray-500">+' + (connectionSharedItems.length - 3) + ' more items</div>';
-                                }
-                            }
-                            
-                            connectionCards += '<div class="bg-gray-50 rounded-lg p-4">' +
-                                '<div class="flex items-center space-x-3 mb-3">' +
-                                '<div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">' +
-                                '<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
-                                '</svg>' +
-                                '</div>' +
-                                '<div class="flex-1">' +
-                                '<p class="font-medium">' + connection.name + '</p>' +
-                                '<p class="text-sm text-gray-600">' + connection.email + '</p>' +
-                                '</div>' +
-                                '<span class="connection-badge connection-active">Connected</span>' +
-                                '</div>' +
-                                '<div class="text-sm text-gray-600 mb-2">' +
-                                '<p><strong>' + connectionSharedItems.length + '</strong> shared items</p>' +
-                                '</div>' +
-                                (itemsListHTML ? '<div class="space-y-1 mb-3">' + itemsListHTML + '</div>' : '') +
-                                '<button data-action="remove-connection" data-connection-id="' + connection.connection_id + '" class="w-full btn btn-danger text-sm py-2">Remove Connection</button>' +
-                                '</div>';
-                        }
-                        connectionsHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">' + connectionCards + '</div>';
-                    }
-                    
-                    const connectionsContent = '<div class="space-y-6 fade-in">' +
-                        '<div class="card">' +
-                        '<div class="p-6 border-b flex justify-between items-center">' +
-                        '<h2 class="text-xl font-bold">Connections</h2>' +
-                        '<button data-action="show-modal" data-modal="connections" class="btn btn-primary">' +
-                        '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+            async renderConnectionsTab() {
+                const connections = await storage.getUserConnections();
+                const bills = await storage.getUserBills();
+                const expenses = await storage.getUserExpenses();
+                const allShared = [...bills, ...expenses].filter(item => item.is_shared);
+                
+                let connectionsHTML = '';
+                
+                if (connections.length === 0) {
+                    connectionsHTML = '<div class="text-center py-12">' +
+                        '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                         '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
                         '</svg>' +
-                        '<span>Manage Connections</span>' +
-                        '</button>' +
-                        '</div>' +
-                        '<div class="p-6">' + connectionsHTML + '</div>' +
-                        '</div>' +
+                        '<p class="text-gray-500">No connections yet</p>' +
+                        '<p class="text-sm text-gray-400 mt-2">Connect with family or roommates to share bills and expenses</p>' +
                         '</div>';
-                    
-                    const connectionsContainer = document.querySelector('#connections-content');
-                    if (connectionsContainer) {
-                        connectionsContainer.innerHTML = connectionsContent;
+                } else {
+                    let connectionCards = '';
+                    for (const connection of connections) {
+                        const connectionSharedItems = allShared.filter(item => 
+                            item.shared_with && item.shared_with.includes(connection.id)
+                        );
+                        
+                        let itemsListHTML = '';
+                        if (connectionSharedItems.length > 0) {
+                            for (const item of connectionSharedItems.slice(0, 3)) {
+                                const status = this.getBillStatus(item);
+                                const itemType = item.category === 'expense' ? 'Expense' : 'Bill';
+                                itemsListHTML += '<div class="flex justify-between text-xs items-center">' +
+                                    '<span>' + item.name + ' (' + itemType + ')</span>' +
+                                    '<div class="text-right">' +
+                                    '<span class="font-medium">$' + (item.user_share || item.amount).toFixed(2) + '</span>' +
+                                    '<div class="' + status.class + ' text-xs px-1 rounded">' + status.status + '</div>' +
+                                    '</div>' +
+                                    '</div>';
+                            }
+                            
+                            if (connectionSharedItems.length > 3) {
+                                itemsListHTML += '<div class="text-xs text-gray-500">+' + (connectionSharedItems.length - 3) + ' more items</div>';
+                            }
+                        }
+                        
+                        connectionCards += '<div class="bg-gray-50 rounded-lg p-4">' +
+                            '<div class="flex items-center space-x-3 mb-3">' +
+                            '<div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">' +
+                            '<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
+                            '</svg>' +
+                            '</div>' +
+                            '<div class="flex-1">' +
+                            '<p class="font-medium">' + connection.name + '</p>' +
+                            '<p class="text-sm text-gray-600">' + connection.email + '</p>' +
+                            '</div>' +
+                            '<span class="connection-badge connection-active">Connected</span>' +
+                            '</div>' +
+                            '<div class="text-sm text-gray-600 mb-2">' +
+                            '<p><strong>' + connectionSharedItems.length + '</strong> shared items</p>' +
+                            '</div>' +
+                            (itemsListHTML ? '<div class="space-y-1 mb-3">' + itemsListHTML + '</div>' : '') +
+                            '<button data-action="remove-connection" data-connection-id="' + connection.connection_id + '" class="w-full btn btn-danger text-sm py-2">Remove Connection</button>' +
+                            '</div>';
                     }
-                }, 100);
-                
-                return '<div id="connections-content" class="space-y-6"><div class="text-center py-8">Loading connections...</div></div>';
-            }
-        }
-
-        // Helper functions for dynamic UI
-        function toggleSplitType(shareWithValue) {
-            const splitOptions = document.getElementById('split-options');
-            if (splitOptions) {
-                splitOptions.style.display = shareWithValue ? 'block' : 'none';
-            }
-        }
-
-        function toggleRecurrenceOptions(isRecurring) {
-            const recurrenceOptions = document.getElementById('recurrence-options');
-            if (recurrenceOptions) {
-                recurrenceOptions.style.display = isRecurring ? 'block' : 'none';
-            }
-        }
-
-        // Attach functions to window for inline event handlers
-        window.toggleSplitType = toggleSplitType;
-        window.toggleRecurrenceOptions = toggleRecurrenceOptions;
-
-        // Handle custom split radio change
-        document.addEventListener('change', (e) => {
-            if (e.target.name === 'splitType') {
-                const customSplit = document.getElementById('custom-split');
-                if (customSplit) {
-                    customSplit.style.display = e.target.value === 'custom' ? 'block' : 'none';
+                    connectionsHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">' + connectionCards + '</div>';
                 }
+                
+                return '<div class="space-y-6 fade-in">' +
+                    '<div class="card">' +
+                    '<div class="p-6 border-b flex justify-between items-center">' +
+                    '<h2 class="text-xl font-bold">Connections</h2>' +
+                    '<button data-action="show-modal" data-modal="connections" class="btn btn-primary">' +
+                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
+                    '</svg>' +
+                    '<span>Manage Connections</span>' +
+                    '</button>' +
+                    '</div>' +
+                    '<div class="p-6">' + connectionsHTML + '</div>' +
+                    '</div>' +
+                    '</div>';
             }
-        });
+        }
 
         // Initialize app after DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                const app = new SmartBudgetApp();
-                
-                // Update receipt items display after modal loads
-                setTimeout(() => {
-                    if (window.app && window.app.updateReceiptItemsDisplay) {
-                        window.app.updateReceiptItemsDisplay();
-                    }
-                }, 500);
-            }, 100);
+            window.app = new SmartBudgetApp();
         });
     </script>
 </body>
