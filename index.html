@@ -2135,6 +2135,11 @@
                     '<div class="max-w-7xl mx-auto p-4">' + mainContent + '</div>' +
                     '</div>';
             }
+
+            renderDashboard(totals, notifications) {
+                const incomeBlurClass = this.privateMode ? 'filter blur-sm' : '';
+                const remainingBlurClass = this.privateMode ? 'filter blur-sm' : '';
+                const remainingColorClass = totals.remaining >= 0 ? 'text-green-600' : 'text-red-600';
                 
                 let notificationsSection = '';
                 if (notifications.length > 0) {
