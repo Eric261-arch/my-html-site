@@ -2686,16 +2686,28 @@
             }
         }
 
+        function updatePercentageOther(userPercentage) {
+            const otherPercentage = 100 - (parseFloat(userPercentage) || 0);
+            const otherSpan = document.getElementById('other-percentage');
+            if (otherSpan) {
+                otherSpan.textContent = `Other person: ${otherPercentage}%`;
+            }
+        }
+
         // Attach functions to window for inline event handlers
         window.toggleSplitType = toggleSplitType;
         window.toggleRecurrenceOptions = toggleRecurrenceOptions;
+        window.updatePercentageOther = updatePercentageOther;
 
         // Handle custom split radio change
         document.addEventListener('change', (e) => {
             if (e.target.name === 'splitType') {
                 const customSplit = document.getElementById('custom-split');
-                if (customSplit) {
+                const percentageSplit = document.getElementById('percentage-split');
+                
+                if (customSplit && percentageSplit) {
                     customSplit.style.display = e.target.value === 'custom' ? 'block' : 'none';
+                    percentageSplit.style.display = e.target.value === 'percentage' ? 'block' : 'none';
                 }
             }
         });
