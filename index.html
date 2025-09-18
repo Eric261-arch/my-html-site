@@ -346,6 +346,7 @@
                 this.setupOfflineHandling();
                 this.user = null;
                 this.setupAuthListener();
+                this.setupRealtimeSubscriptions();
             }
 
             setupAuthListener() {
@@ -358,6 +359,38 @@
                         }
                     }
                 });
+            }
+
+            setupRealtimeSubscriptions() {
+                // Subscribe to bills changes
+                supabase
+                    .channel('bills-changes')
+                    .on('postgres_changes', 
+                        { event: '*', schema: 'public', table: 'bills' },
+                        (payload) => {
+                            console.log('Bills changed:', payload);
+                            if (window.app && this.user) {
+                                // Refresh the app when bills change
+                                window.app.render();
+                            }
+                        }
+                    )
+                    .subscribe();
+
+                // Subscribe to bill_shares changes
+                supabase
+                    .channel('bill-shares-changes')
+                    .on('postgres_changes',
+                        { event: '*', schema: 'public', table: 'bill_shares' },
+                        (payload) => {
+                            console.log('Bill shares changed:', payload);
+                            if (window.app && this.user) {
+                                // Refresh the app when bill shares change
+                                window.app.render();
+                            }
+                        }
+                    )
+                    .subscribe();
             }
 
             setupOfflineHandling() {
@@ -753,9 +786,9 @@
                         user_id: this.user.id,
                         name: expenseData.name,
                         amount: expenseData.totalAmount,
-                        due_date: expenseData.expenseDate, // Use due_date, not expense_date
+                        due_date: expenseData.expenseDate,
                         category: 'expense',
-                        description: JSON.stringify(expenseData.items || []), // Store receipt items as JSON
+                        description: JSON.stringify(expenseData.items || []),
                         paid: false,
                         creator_paid: false,
                         shared_with: expenseData.shared_with || [],
@@ -793,24 +826,28 @@
                 }
             }
 
+            // FIXED: Filter out completed bills and expenses
             async getUserBills() {
                 try {
-                    // Get bills owned by user (excluding expenses)
+                    // Get bills owned by user (excluding expenses and completed bills)
                     const { data: ownedBills, error: ownedError } = await supabase
                         .from('bills')
                         .select('*, bill_shares(*)')
                         .eq('user_id', this.user.id)
                         .neq('category', 'expense')
+                        .eq('paid', false) // Only get unpaid bills
                         .order('due_date', { ascending: true });
 
                     if (ownedError) throw ownedError;
 
-                    // Get bills shared with user (excluding expenses)
+                    // Get bills shared with user (excluding expenses and completed bills)
                     const { data: sharedBills, error: sharedError } = await supabase
                         .from('bill_shares')
                         .select('*, bills!inner(*)')
                         .eq('user_id', this.user.id)
-                        .neq('bills.category', 'expense');
+                        .eq('paid', false) // Only get unpaid shares
+                        .neq('bills.category', 'expense')
+                        .eq('bills.paid', false); // Only get bills that aren't fully paid
 
                     if (sharedError) throw sharedError;
 
@@ -837,24 +874,28 @@
                 }
             }
 
+            // FIXED: Filter out completed expenses
             async getUserExpenses() {
                 try {
-                    // Get expenses owned by user
+                    // Get expenses owned by user (excluding completed expenses)
                     const { data: ownedExpenses, error: ownedError } = await supabase
                         .from('bills')
                         .select('*, bill_shares(*)')
                         .eq('user_id', this.user.id)
                         .eq('category', 'expense')
+                        .eq('paid', false) // Only get unpaid expenses
                         .order('due_date', { ascending: false });
 
                     if (ownedError) throw ownedError;
 
-                    // Get expenses shared with user
+                    // Get expenses shared with user (excluding completed expenses)
                     const { data: sharedExpenses, error: sharedError } = await supabase
                         .from('bill_shares')
                         .select('*, bills!inner(*)')
                         .eq('user_id', this.user.id)
-                        .eq('bills.category', 'expense');
+                        .eq('paid', false) // Only get unpaid shares
+                        .eq('bills.category', 'expense')
+                        .eq('bills.paid', false); // Only get expenses that aren't fully paid
 
                     if (sharedError) throw sharedError;
 
@@ -877,6 +918,51 @@
                     return allExpenses;
                 } catch (error) {
                     console.error('Get user expenses error:', error);
+                    return [];
+                }
+            }
+
+            // NEW: Get payment history (completed bills and expenses)
+            async getPaymentHistory() {
+                try {
+                    // Get completed bills/expenses owned by user
+                    const { data: ownedHistory, error: ownedError } = await supabase
+                        .from('bills')
+                        .select('*, bill_shares(*)')
+                        .eq('user_id', this.user.id)
+                        .eq('paid', true) // Only get completed items
+                        .order('paid_date', { ascending: false });
+
+                    if (ownedError) throw ownedError;
+
+                    // Get completed bills/expenses shared with user
+                    const { data: sharedHistory, error: sharedError } = await supabase
+                        .from('bill_shares')
+                        .select('*, bills!inner(*)')
+                        .eq('user_id', this.user.id)
+                        .eq('bills.paid', true); // Only get fully completed bills
+
+                    if (sharedError) throw sharedError;
+
+                    // Combine and format history
+                    const allHistory = [...(ownedHistory || [])];
+                    
+                    // Add shared history (avoiding duplicates)
+                    sharedHistory?.forEach(share => {
+                        if (!allHistory.find(item => item.id === share.bills.id)) {
+                            allHistory.push({
+                                ...share.bills,
+                                user_share: share.amount,
+                                is_shared: true,
+                                user_paid: share.paid,
+                                share_id: share.id
+                            });
+                        }
+                    });
+
+                    return allHistory;
+                } catch (error) {
+                    console.error('Get payment history error:', error);
                     return [];
                 }
             }
@@ -1888,9 +1974,10 @@
                     const incomes = await storage.getUserIncomes();
                     const bills = await storage.getUserBills();
                     const expenses = await storage.getUserExpenses();
+                    const history = await storage.getPaymentHistory(); // NEW: Get payment history
                     const notifications = await storage.getUpcomingBillNotifications();
                     
-                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, notifications);
+                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, history, notifications);
                 }
             }
 
@@ -1935,9 +2022,9 @@
                     '</div>';
             }
 
-            renderApp(totals, incomes, bills, expenses, notifications) {
+            renderApp(totals, incomes, bills, expenses, history, notifications) {
                 const userName = this.currentUser?.name || 'User';
-                const tabs = ['dashboard', 'income', 'bills', 'expenses', 'connections'];
+                const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history', 'connections']; // ADDED: history tab
                 
                 let tabsHTML = '';
                 for (const tab of tabs) {
@@ -1965,6 +2052,8 @@
                     mainContent = this.renderBillsTab(bills);
                 } else if (this.activeTab === 'expenses') {
                     mainContent = this.renderExpensesTab(expenses);
+                } else if (this.activeTab === 'history') { // NEW: History tab
+                    mainContent = this.renderHistoryTab(history);
                 } else if (this.activeTab === 'connections') {
                     mainContent = this.renderConnectionsTab();
                 }
@@ -2394,6 +2483,99 @@
                     '</button>' +
                     '</div>' +
                     '<div class="p-6">' + expensesContent + '</div>' +
+                    '</div>';
+            }
+
+            // NEW: History tab for completed bills and expenses
+            renderHistoryTab(history) {
+                let historyContent = '';
+                
+                if (history.length === 0) {
+                    historyContent = '<div class="text-center py-12">' +
+                        '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m.121 9.88l2.879-2.879m0 0a3 3 0 105.618-5.618" />' +
+                        '</svg>' +
+                        '<p class="text-gray-500">No payment history yet</p>' +
+                        '<p class="text-sm text-gray-400 mt-2">Completed bills and expenses will appear here</p>' +
+                        '</div>';
+                } else {
+                    let historyList = '';
+                    for (const item of history) {
+                        const isShared = item.is_shared || false;
+                        const userAmount = item.user_share || item.amount;
+                        const isExpense = item.category === 'expense';
+                        
+                        // Parse receipt items if they exist (for expenses)
+                        let receiptItems = [];
+                        try {
+                            if (item.description && isExpense) {
+                                receiptItems = JSON.parse(item.description);
+                            }
+                        } catch (e) {
+                            // If description is not JSON, treat as simple text
+                        }
+                        
+                        const indicators = [];
+                        if (isExpense) {
+                            indicators.push('<span class="expense-indicator">Expense</span>');
+                        }
+                        if (isShared) {
+                            indicators.push('<span class="shared-indicator">Shared</span>');
+                        } else {
+                            indicators.push('<span class="personal-indicator">Personal</span>');
+                        }
+                        
+                        const totalInfo = (isShared && item.amount !== userAmount) ? 
+                            '<p class="text-xs text-gray-500">Total: $' + item.amount.toFixed(2) + '</p>' : '';
+                        
+                        let receiptItemsHTML = '';
+                        if (receiptItems.length > 0) {
+                            receiptItemsHTML = '<div class="mt-2 text-xs text-gray-600">' +
+                                '<p class="font-medium">Items:</p>' +
+                                '<ul class="list-disc list-inside">';
+                            receiptItems.forEach(receiptItem => {
+                                receiptItemsHTML += '<li>' + receiptItem.name + ' - $' + receiptItem.amount.toFixed(2) + '</li>';
+                            });
+                            receiptItemsHTML += '</ul></div>';
+                        }
+                        
+                        historyList += '<div class="p-4 bg-gray-50 rounded-lg">' +
+                            '<div class="flex items-center justify-between mb-3">' +
+                            '<div class="flex items-center space-x-4 flex-1">' +
+                            '<div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">' +
+                            '<svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />' +
+                            '</svg>' +
+                            '</div>' +
+                            '<div class="flex-1">' +
+                            '<div class="flex items-center space-x-2 mb-1 flex-wrap">' +
+                            '<p class="font-medium">' + item.name + '</p>' +
+                            indicators.join('') +
+                            '</div>' +
+                            '<p class="text-sm text-gray-600">' + 
+                            (isExpense ? 'Date: ' : 'Due: ') + 
+                            new Date(item.due_date).toLocaleDateString() + 
+                            (isExpense ? '' : ' • ' + item.category) + '</p>' +
+                            receiptItemsHTML +
+                            '</div>' +
+                            '</div>' +
+                            '<div class="text-right">' +
+                            '<p class="text-lg font-bold text-green-600">$' + userAmount.toFixed(2) + '</p>' +
+                            totalInfo +
+                            '<p class="text-xs text-green-600">Completed ' + (item.paid_date ? '• ' + new Date(item.paid_date).toLocaleDateString() : '') + '</p>' +
+                            '</div>' +
+                            '</div>' +
+                            '</div>';
+                    }
+                    historyContent = '<div class="space-y-3">' + historyList + '</div>';
+                }
+                
+                return '<div class="card fade-in">' +
+                    '<div class="p-6 border-b">' +
+                    '<h2 class="text-xl font-bold">Payment History</h2>' +
+                    '<p class="text-sm text-gray-600 mt-1">All completed bills and expenses</p>' +
+                    '</div>' +
+                    '<div class="p-6">' + historyContent + '</div>' +
                     '</div>';
             }
 
