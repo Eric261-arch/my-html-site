@@ -1513,6 +1513,11 @@
                                     const userAmount = parseFloat(data.userAmount) || 0;
                                     billData.splits[this.currentUser.id] = userAmount;
                                     billData.splits[data.shareWith] = billData.amount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
+                                    billData.splits[this.currentUser.id] = (billData.amount * userPercentage / 100);
+                                    billData.splits[data.shareWith] = (billData.amount * otherPercentage / 100);
                                 }
                             }
                             
@@ -1545,6 +1550,11 @@
                                     const userAmount = parseFloat(data.userAmount) || 0;
                                     expenseData.splits[this.currentUser.id] = userAmount;
                                     expenseData.splits[data.shareWith] = expenseData.totalAmount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
+                                    expenseData.splits[this.currentUser.id] = (expenseData.totalAmount * userPercentage / 100);
+                                    expenseData.splits[data.shareWith] = (expenseData.totalAmount * otherPercentage / 100);
                                 }
                             }
 
@@ -1800,12 +1810,26 @@
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
+                        '</label>' +
+                        '<label class="flex items-center">' +
+                        '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
+                        '<span class="text-sm">Split by percentage</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="custom" class="mr-2">' +
                         '<span class="text-sm">Custom amounts</span>' +
                         '</label>' +
+                        '</div>' +
+                        '<div id="percentage-split" style="display:none;">' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
                         '</div>' +
                         '<div id="custom-split" style="display:none;">' +
                         '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
@@ -1857,12 +1881,26 @@
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
+                        '</label>' +
+                        '<label class="flex items-center">' +
+                        '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
+                        '<span class="text-sm">Split by percentage</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="custom" class="mr-2">' +
                         '<span class="text-sm">Custom amounts</span>' +
                         '</label>' +
+                        '</div>' +
+                        '<div id="percentage-split" style="display:none;">' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
                         '</div>' +
                         '<div id="custom-split" style="display:none;">' +
                         '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
@@ -2097,11 +2135,6 @@
                     '<div class="max-w-7xl mx-auto p-4">' + mainContent + '</div>' +
                     '</div>';
             }
-
-            renderDashboard(totals, notifications) {
-                const incomeBlurClass = this.privateMode ? 'filter blur-sm' : '';
-                const remainingBlurClass = this.privateMode ? 'filter blur-sm' : '';
-                const remainingColorClass = totals.remaining >= 0 ? 'text-green-600' : 'text-red-600';
                 
                 let notificationsSection = '';
                 if (notifications.length > 0) {
