@@ -346,6 +346,7 @@
                 this.setupOfflineHandling();
                 this.user = null;
                 this.setupAuthListener();
+                this.setupRealtimeSubscriptions();
             }
 
             setupAuthListener() {
@@ -356,8 +357,35 @@
                         if (window.app) {
                             window.app.handleSignOut();
                         }
+                    } else if (event === 'SIGNED_IN' && window.app) {
+                        // Refresh the app when user signs in
+                        window.app.render();
                     }
                 });
+            }
+
+            setupRealtimeSubscriptions() {
+                // Subscribe to bill changes for real-time updates
+                supabase
+                    .channel('bill-changes')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'bills' }, (payload) => {
+                        if (window.app && this.user) {
+                            // Only refresh if this affects the current user
+                            if (payload.new?.user_id === this.user.id || 
+                                payload.old?.user_id === this.user.id ||
+                                (payload.new?.shared_with && payload.new.shared_with.includes(this.user.id)) ||
+                                (payload.old?.shared_with && payload.old.shared_with.includes(this.user.id))) {
+                                window.app.render();
+                            }
+                        }
+                    })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'bill_shares' }, (payload) => {
+                        if (window.app && this.user) {
+                            // Refresh for bill share changes
+                            window.app.render();
+                        }
+                    })
+                    .subscribe();
             }
 
             setupOfflineHandling() {
@@ -706,7 +734,7 @@
                 }
             }
 
-            // Enhanced Bill/Expense methods
+            // Enhanced Bill/Expense methods with fixed payment logic
             async addBill(billData) {
                 try {
                     const billToInsert = {
@@ -753,9 +781,9 @@
                         user_id: this.user.id,
                         name: expenseData.name,
                         amount: expenseData.totalAmount,
-                        due_date: expenseData.expenseDate, // Use due_date, not expense_date
+                        due_date: expenseData.expenseDate,
                         category: 'expense',
-                        description: JSON.stringify(expenseData.items || []), // Store receipt items as JSON
+                        description: JSON.stringify(expenseData.items || []),
                         paid: false,
                         creator_paid: false,
                         shared_with: expenseData.shared_with || [],
@@ -793,9 +821,10 @@
                 }
             }
 
+            // Fixed getUserBills method with proper payment status handling
             async getUserBills() {
                 try {
-                    // Get bills owned by user (excluding expenses)
+                    // Get bills owned by user (excluding expenses) 
                     const { data: ownedBills, error: ownedError } = await supabase
                         .from('bills')
                         .select('*, bill_shares(*)')
@@ -814,8 +843,16 @@
 
                     if (sharedError) throw sharedError;
 
-                    // Combine and format bills
-                    const allBills = [...(ownedBills || [])];
+                    // Process owned bills and set proper is_shared flag
+                    const processedOwnedBills = (ownedBills || []).map(bill => ({
+                        ...bill,
+                        is_shared: bill.bill_shares && bill.bill_shares.length > 0,
+                        user_paid: bill.creator_paid,
+                        share_id: null
+                    }));
+
+                    // Combine all bills
+                    const allBills = [...processedOwnedBills];
                     
                     // Add shared bills (avoiding duplicates)
                     sharedBills?.forEach(share => {
@@ -830,7 +867,8 @@
                         }
                     });
 
-                    return allBills;
+                    // Filter out fully completed bills
+                    return allBills.filter(bill => !bill.paid);
                 } catch (error) {
                     console.error('Get user bills error:', error);
                     return [];
@@ -858,8 +896,16 @@
 
                     if (sharedError) throw sharedError;
 
-                    // Combine and format expenses
-                    const allExpenses = [...(ownedExpenses || [])];
+                    // Process owned expenses
+                    const processedOwnedExpenses = (ownedExpenses || []).map(expense => ({
+                        ...expense,
+                        is_shared: expense.bill_shares && expense.bill_shares.length > 0,
+                        user_paid: expense.creator_paid,
+                        share_id: null
+                    }));
+
+                    // Combine all expenses
+                    const allExpenses = [...processedOwnedExpenses];
                     
                     // Add shared expenses (avoiding duplicates)
                     sharedExpenses?.forEach(share => {
@@ -874,13 +920,66 @@
                         }
                     });
 
-                    return allExpenses;
+                    // Filter out fully completed expenses
+                    return allExpenses.filter(expense => !expense.paid);
                 } catch (error) {
                     console.error('Get user expenses error:', error);
                     return [];
                 }
             }
 
+            // Get completed bills and expenses for history
+            async getCompletedItems() {
+                try {
+                    // Get completed bills owned by user
+                    const { data: ownedBills, error: ownedError } = await supabase
+                        .from('bills')
+                        .select('*, bill_shares(*)')
+                        .eq('user_id', this.user.id)
+                        .eq('paid', true)
+                        .order('paid_date', { ascending: false });
+
+                    if (ownedError) throw ownedError;
+
+                    // Get completed bills shared with user  
+                    const { data: sharedBills, error: sharedError } = await supabase
+                        .from('bill_shares')
+                        .select('*, bills!inner(*)')
+                        .eq('user_id', this.user.id)
+                        .eq('bills.paid', true);
+
+                    if (sharedError) throw sharedError;
+
+                    // Process owned items
+                    const processedOwned = (ownedBills || []).map(item => ({
+                        ...item,
+                        is_shared: item.bill_shares && item.bill_shares.length > 0,
+                        user_share: item.amount,
+                        item_type: item.category === 'expense' ? 'expense' : 'bill'
+                    }));
+
+                    const allItems = [...processedOwned];
+                    
+                    // Add shared items (avoiding duplicates)
+                    sharedBills?.forEach(share => {
+                        if (!allItems.find(item => item.id === share.bills.id)) {
+                            allItems.push({
+                                ...share.bills,
+                                user_share: share.amount,
+                                is_shared: true,
+                                item_type: share.bills.category === 'expense' ? 'expense' : 'bill'
+                            });
+                        }
+                    });
+
+                    return allItems;
+                } catch (error) {
+                    console.error('Get completed items error:', error);
+                    return [];
+                }
+            }
+
+            // Fixed markBillPaid method
             async markBillPaid(billId, isShared = false, shareId = null) {
                 try {
                     if (isShared && shareId) {
@@ -918,6 +1017,7 @@
                 }
             }
 
+            // Enhanced checkAndCompleteBill method
             async checkAndCompleteBill(billId) {
                 try {
                     // Get bill and all its shares
@@ -934,6 +1034,14 @@
                     const allSharesPaid = bill.bill_shares.length === 0 || 
                                          bill.bill_shares.every(share => share.paid);
 
+                    console.log('Checking bill completion:', {
+                        billId,
+                        creatorPaid,
+                        allSharesPaid,
+                        sharesCount: bill.bill_shares.length,
+                        shares: bill.bill_shares
+                    });
+
                     if (creatorPaid && allSharesPaid) {
                         // Mark entire bill as complete
                         const { error } = await supabase
@@ -945,6 +1053,8 @@
                             .eq('id', billId);
 
                         if (error) throw error;
+
+                        console.log('Bill marked as fully paid:', billId);
 
                         // Handle recurring bills
                         if (bill.recurring && bill.recurrence_interval) {
@@ -1129,7 +1239,7 @@
         // Initialize Supabase service
         const storage = new SupabaseService();
 
-        // Enhanced Main App Class
+        // Enhanced Main App Class with History tab
         class SmartBudgetApp {
             constructor() {
                 this.currentUser = null;
@@ -1137,7 +1247,7 @@
                 this.activeTab = 'dashboard';
                 this.privateMode = false;
                 this.loading = false;
-                this.receiptItems = []; // For tracking expense items
+                this.receiptItems = [];
                 this.init();
             }
 
@@ -1463,7 +1573,7 @@
                             }
 
                             await storage.addExpense(expenseData);
-                            this.receiptItems = []; // Reset receipt items
+                            this.receiptItems = [];
                             this.closeModal();
                             this.render();
                             break;
@@ -1513,7 +1623,7 @@
             closeModal() {
                 const modal = document.querySelector('.fixed.inset-0');
                 if (modal) modal.remove();
-                this.receiptItems = []; // Reset receipt items when closing modal
+                this.receiptItems = [];
             }
 
             async getModalContent(type, itemId) {
@@ -1752,7 +1862,7 @@
             }
 
             buildExpenseModal(connections) {
-                this.receiptItems = [{ name: '', amount: 0 }]; // Initialize with one empty item
+                this.receiptItems = [{ name: '', amount: 0 }];
                 
                 let connectionOptions = '<option value="">Just me (no sharing)</option>';
                 for (const conn of connections) {
@@ -1813,18 +1923,21 @@
                     '</form>';
             }
 
+            // Fixed getBillStatus method
             getBillStatus(bill) {
                 if (bill.paid) {
                     return { status: 'Complete', class: 'status-complete' };
                 }
 
                 if (bill.is_shared) {
+                    // For shared bills, check user's payment status
                     if (bill.user_paid) {
                         return { status: 'Waiting for others', class: 'status-waiting-others' };
                     } else {
                         return { status: 'Waiting for you', class: 'status-waiting-you' };
                     }
                 } else {
+                    // For personal bills, check creator payment status
                     if (bill.creator_paid) {
                         return { status: 'Waiting for others', class: 'status-waiting-others' };
                     } else {
@@ -1889,8 +2002,9 @@
                     const bills = await storage.getUserBills();
                     const expenses = await storage.getUserExpenses();
                     const notifications = await storage.getUpcomingBillNotifications();
+                    const completedItems = await storage.getCompletedItems();
                     
-                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, notifications);
+                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, notifications, completedItems);
                 }
             }
 
@@ -1935,9 +2049,9 @@
                     '</div>';
             }
 
-            renderApp(totals, incomes, bills, expenses, notifications) {
+            renderApp(totals, incomes, bills, expenses, notifications, completedItems) {
                 const userName = this.currentUser?.name || 'User';
-                const tabs = ['dashboard', 'income', 'bills', 'expenses', 'connections'];
+                const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history', 'connections'];
                 
                 let tabsHTML = '';
                 for (const tab of tabs) {
@@ -1947,6 +2061,8 @@
                     
                     if (tab === 'dashboard' && notifications.length > 0) {
                         notificationDot = '<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">' + notifications.length + '</span>';
+                    } else if (tab === 'history' && completedItems.length > 0) {
+                        notificationDot = '<span class="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">' + completedItems.length + '</span>';
                     }
                     
                     tabsHTML += '<button data-action="switch-tab" data-tab="' + tab + '" class="btn py-4 px-4 border-b-2 font-medium text-sm transition whitespace-nowrap relative ' + activeClass + '">' + tabName + notificationDot + '</button>';
@@ -1965,6 +2081,8 @@
                     mainContent = this.renderBillsTab(bills);
                 } else if (this.activeTab === 'expenses') {
                     mainContent = this.renderExpensesTab(expenses);
+                } else if (this.activeTab === 'history') {
+                    mainContent = this.renderHistoryTab(completedItems);
                 } else if (this.activeTab === 'connections') {
                     mainContent = this.renderConnectionsTab();
                 }
@@ -2038,7 +2156,7 @@
                             '<p class="font-medium">' + notification.name + '</p>' +
                             '<p class="text-sm opacity-75">' + daysText + '</p>' +
                             '</div>' +
-                            '<p class="font-bold">$' + userAmount.toFixed(2) + '</p>' +
+                            '<p class="font-bold"> + userAmount.toFixed(2) + '</p>' +
                             '</div>' +
                             '</div>';
                     }
@@ -2064,7 +2182,7 @@
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />' +
                     '</svg>' +
                     '</div>' +
-                    '<p class="text-2xl font-bold ' + incomeBlurClass + '">$' + totals.income.toFixed(2) + '</p>' +
+                    '<p class="text-2xl font-bold ' + incomeBlurClass + '"> + totals.income.toFixed(2) + '</p>' +
                     '</div>' +
                     '<div class="card card-mobile">' +
                     '<div class="flex items-center justify-between mb-2">' +
@@ -2073,7 +2191,7 @@
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />' +
                     '</svg>' +
                     '</div>' +
-                    '<p class="text-2xl font-bold">$' + totals.bills.toFixed(2) + '</p>' +
+                    '<p class="text-2xl font-bold"> + totals.bills.toFixed(2) + '</p>' +
                     '</div>' +
                     '<div class="card card-mobile">' +
                     '<div class="flex items-center justify-between mb-2">' +
@@ -2082,7 +2200,7 @@
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />' +
                     '</svg>' +
                     '</div>' +
-                    '<p class="text-2xl font-bold">$' + totals.expenses.toFixed(2) + '</p>' +
+                    '<p class="text-2xl font-bold"> + totals.expenses.toFixed(2) + '</p>' +
                     '</div>' +
                     '<div class="card card-mobile">' +
                     '<div class="flex items-center justify-between mb-2">' +
@@ -2091,7 +2209,7 @@
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />' +
                     '</svg>' +
                     '</div>' +
-                    '<p class="text-2xl font-bold ' + remainingColorClass + ' ' + remainingBlurClass + '">$' + totals.remaining.toFixed(2) + '</p>' +
+                    '<p class="text-2xl font-bold ' + remainingColorClass + ' ' + remainingBlurClass + '"> + totals.remaining.toFixed(2) + '</p>' +
                     '</div>' +
                     '</div>' +
                     '<div class="grid grid-cols-2 lg:grid-cols-5 gap-4">' +
@@ -2101,7 +2219,7 @@
                     '</svg>' +
                     '<span class="text-sm font-medium">Add Income</span>' +
                     '</button>' +
-                    '<button data-action="show-modal" data-modal="bill" class="card card-mobile hover-shadow-lg transition flex flex-col items-center space-y-2 btn">' +
+                    '<button data-action="show-modal" data-modal="bill" class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">' +
                     '<svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />' +
                     '</svg>' +
@@ -2158,7 +2276,7 @@
                             '</div>' +
                             '</div>' +
                             '<div class="flex items-center space-x-2">' +
-                            '<p class="text-lg font-bold text-green-600 ' + blurClass + '">$' + income.amount.toFixed(2) + '</p>' +
+                            '<p class="text-lg font-bold text-green-600 ' + blurClass + '"> + income.amount.toFixed(2) + '</p>' +
                             '<button data-action="show-modal" data-modal="income" data-id="' + income.id + '" class="btn p-2 text-blue-600 hover:text-blue-800">' +
                             '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                             '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />' +
@@ -2219,7 +2337,7 @@
                         }
                         
                         const totalInfo = (isShared && bill.amount !== userAmount) ? 
-                            '<p class="text-xs text-gray-500">Total: $' + bill.amount.toFixed(2) + '</p>' : '';
+                            '<p class="text-xs text-gray-500">Total:  + bill.amount.toFixed(2) + '</p>' : '';
                         
                         let actionButton = '';
                         if (status.status === 'Complete') {
@@ -2253,7 +2371,7 @@
                             '</div>' +
                             '<div class="flex items-center space-x-3">' +
                             '<div class="text-right">' +
-                            '<p class="text-lg font-bold">$' + userAmount.toFixed(2) + '</p>' +
+                            '<p class="text-lg font-bold"> + userAmount.toFixed(2) + '</p>' +
                             totalInfo +
                             '<span class="' + status.class + '">' + status.status + '</span>' +
                             '</div>' +
@@ -2321,7 +2439,7 @@
                         }
                         
                         const totalInfo = (isShared && expense.amount !== userAmount) ? 
-                            '<p class="text-xs text-gray-500">Total: $' + expense.amount.toFixed(2) + '</p>' : '';
+                            '<p class="text-xs text-gray-500">Total:  + expense.amount.toFixed(2) + '</p>' : '';
                         
                         let receiptItemsHTML = '';
                         if (receiptItems.length > 0) {
@@ -2329,7 +2447,7 @@
                                 '<p class="font-medium">Items:</p>' +
                                 '<ul class="list-disc list-inside">';
                             receiptItems.forEach(item => {
-                                receiptItemsHTML += '<li>' + item.name + ' - $' + item.amount.toFixed(2) + '</li>';
+                                receiptItemsHTML += '<li>' + item.name + ' -  + item.amount.toFixed(2) + '</li>';
                             });
                             receiptItemsHTML += '</ul></div>';
                         }
@@ -2366,7 +2484,7 @@
                             '</div>' +
                             '<div class="flex items-center space-x-3">' +
                             '<div class="text-right">' +
-                            '<p class="text-lg font-bold">$' + userAmount.toFixed(2) + '</p>' +
+                            '<p class="text-lg font-bold"> + userAmount.toFixed(2) + '</p>' +
                             totalInfo +
                             '<span class="' + status.class + '">' + status.status + '</span>' +
                             '</div>' +
@@ -2394,6 +2512,102 @@
                     '</button>' +
                     '</div>' +
                     '<div class="p-6">' + expensesContent + '</div>' +
+                    '</div>';
+            }
+
+            // New History Tab
+            renderHistoryTab(completedItems) {
+                let historyContent = '';
+                
+                if (completedItems.length === 0) {
+                    historyContent = '<div class="text-center py-12">' +
+                        '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />' +
+                        '</svg>' +
+                        '<p class="text-gray-500">No completed items yet</p>' +
+                        '<p class="text-sm text-gray-400 mt-2">Paid bills and expenses will appear here</p>' +
+                        '</div>';
+                } else {
+                    let historyList = '';
+                    for (const item of completedItems) {
+                        const isShared = item.is_shared || false;
+                        const userAmount = item.user_share || item.amount;
+                        const itemType = item.item_type;
+                        
+                        const indicators = [];
+                        if (itemType === 'expense') {
+                            indicators.push('<span class="expense-indicator">Expense</span>');
+                        } else {
+                            indicators.push('<span class="personal-indicator">Bill</span>');
+                        }
+                        
+                        if (isShared) {
+                            indicators.push('<span class="shared-indicator">Shared</span>');
+                        } else {
+                            indicators.push('<span class="personal-indicator">Personal</span>');
+                        }
+                        
+                        const totalInfo = (isShared && item.amount !== userAmount) ? 
+                            '<p class="text-xs text-gray-500">Total:  + item.amount.toFixed(2) + '</p>' : '';
+                        
+                        // Parse receipt items for expenses
+                        let receiptItemsHTML = '';
+                        if (itemType === 'expense' && item.description) {
+                            try {
+                                const receiptItems = JSON.parse(item.description);
+                                if (receiptItems.length > 0) {
+                                    receiptItemsHTML = '<div class="mt-2 text-xs text-gray-600">' +
+                                        '<p class="font-medium">Items:</p>' +
+                                        '<ul class="list-disc list-inside">';
+                                    receiptItems.forEach(receiptItem => {
+                                        receiptItemsHTML += '<li>' + receiptItem.name + ' -  + receiptItem.amount.toFixed(2) + '</li>';
+                                    });
+                                    receiptItemsHTML += '</ul></div>';
+                                }
+                            } catch (e) {
+                                // Not JSON, skip
+                            }
+                        }
+                        
+                        historyList += '<div class="p-4 bg-gray-50 rounded-lg">' +
+                            '<div class="flex items-center justify-between mb-3">' +
+                            '<div class="flex items-center space-x-4 flex-1">' +
+                            '<div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">' +
+                            '<svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />' +
+                            '</svg>' +
+                            '</div>' +
+                            '<div class="flex-1">' +
+                            '<div class="flex items-center space-x-2 mb-1 flex-wrap">' +
+                            '<p class="font-medium">' + item.name + '</p>' +
+                            indicators.join('') +
+                            '</div>' +
+                            '<p class="text-sm text-gray-600">' + 
+                            (itemType === 'expense' ? 'Date: ' : 'Due: ') + 
+                            new Date(item.due_date).toLocaleDateString() + 
+                            (item.category !== 'expense' ? ' • ' + item.category : '') + 
+                            '</p>' +
+                            (item.paid_date ? '<p class="text-xs text-green-600">Completed: ' + new Date(item.paid_date).toLocaleDateString() + '</p>' : '') +
+                            receiptItemsHTML +
+                            '</div>' +
+                            '</div>' +
+                            '<div class="text-right">' +
+                            '<p class="text-lg font-bold"> + userAmount.toFixed(2) + '</p>' +
+                            totalInfo +
+                            '<span class="status-complete">Complete</span>' +
+                            '</div>' +
+                            '</div>' +
+                            '</div>';
+                    }
+                    historyContent = '<div class="space-y-3">' + historyList + '</div>';
+                }
+                
+                return '<div class="card fade-in">' +
+                    '<div class="p-6 border-b">' +
+                    '<h2 class="text-xl font-bold">Payment History</h2>' +
+                    '<p class="text-sm text-gray-600 mt-1">Completed bills and expenses</p>' +
+                    '</div>' +
+                    '<div class="p-6">' + historyContent + '</div>' +
                     '</div>';
             }
 
@@ -2430,7 +2644,7 @@
                                     itemsListHTML += '<div class="flex justify-between text-xs items-center">' +
                                         '<span>' + item.name + ' (' + itemType + ')</span>' +
                                         '<div class="text-right">' +
-                                        '<span class="font-medium">$' + (item.user_share || item.amount).toFixed(2) + '</span>' +
+                                        '<span class="font-medium"> + (item.user_share || item.amount).toFixed(2) + '</span>' +
                                         '<div class="' + status.class + ' text-xs px-1 rounded">' + status.status + '</div>' +
                                         '</div>' +
                                         '</div>';
