@@ -841,13 +841,13 @@
                     if (ownedError) throw ownedError;
 
                     // Get bills shared with user (excluding expenses and completed bills)
-                    // FIXED: Show bills where the overall bill isn't complete, regardless of user's payment status
                     const { data: sharedBills, error: sharedError } = await supabase
                         .from('bill_shares')
                         .select('*, bills!inner(*)')
                         .eq('user_id', this.user.id)
+                        .eq('paid', false) // Only get unpaid shares
                         .neq('bills.category', 'expense')
-                        .eq('bills.paid', false); // Only get bills that aren't fully paid (removed user paid filter)
+                        .eq('bills.paid', false); // Only get bills that aren't fully paid
 
                     if (sharedError) throw sharedError;
 
@@ -889,13 +889,13 @@
                     if (ownedError) throw ownedError;
 
                     // Get expenses shared with user (excluding completed expenses)
-                    // FIXED: Show expenses where the overall expense isn't complete, regardless of user's payment status
                     const { data: sharedExpenses, error: sharedError } = await supabase
                         .from('bill_shares')
                         .select('*, bills!inner(*)')
                         .eq('user_id', this.user.id)
+                        .eq('paid', false) // Only get unpaid shares
                         .eq('bills.category', 'expense')
-                        .eq('bills.paid', false); // Only get expenses that aren't fully paid (removed user paid filter)
+                        .eq('bills.paid', false); // Only get expenses that aren't fully paid
 
                     if (sharedError) throw sharedError;
 
