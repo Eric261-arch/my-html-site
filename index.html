@@ -322,6 +322,53 @@
             cursor: pointer;
             font-size: 12px;
         }
+
+        .payment-breakdown {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+
+        .payment-breakdown-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .payment-breakdown-item:last-child {
+            border-bottom: none;
+            font-weight: 600;
+            margin-top: 4px;
+            padding-top: 8px;
+        }
+
+        /* Mobile tab fixes */
+        @media (max-width: 768px) {
+            .tabs-container {
+                overflow-x: auto;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+            }
+            
+            .tabs-container::-webkit-scrollbar {
+                display: none;
+            }
+            
+            .tabs-flex {
+                min-width: max-content;
+                padding: 0 16px;
+            }
+            
+            .tab-button {
+                white-space: nowrap;
+                min-width: auto;
+                flex-shrink: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -826,96 +873,106 @@
                 }
             }
 
-            // FIXED: Filter out completed bills and expenses
+            // FIXED: Updated payment status retrieval methods
             async getUserBills() {
                 try {
-                    // Get bills owned by user (excluding expenses and completed bills)
-                    const { data: ownedBills, error: ownedError } = await supabase
+                    // Get bills with enhanced data including split information
+                    const { data: bills, error } = await supabase
                         .from('bills')
-                        .select('*, bill_shares(*)')
-                        .eq('user_id', this.user.id)
+                        .select(`
+                            *,
+                            bill_shares(*)
+                        `)
+                        .or(`user_id.eq.${this.user.id},bill_shares.user_id.eq.${this.user.id}`)
                         .neq('category', 'expense')
-                        .eq('paid', false) // Only get unpaid bills
+                        .eq('paid', false)
                         .order('due_date', { ascending: true });
 
-                    if (ownedError) throw ownedError;
+                    if (error) throw error;
 
-                    // Get bills shared with user (excluding expenses and completed bills)
-                    // FIXED: Show bills where the overall bill isn't complete, regardless of user's payment status
-                    const { data: sharedBills, error: sharedError } = await supabase
-                        .from('bill_shares')
-                        .select('*, bills!inner(*)')
-                        .eq('user_id', this.user.id)
-                        .neq('bills.category', 'expense')
-                        .eq('bills.paid', false); // Only get bills that aren't fully paid (removed user paid filter)
-
-                    if (sharedError) throw sharedError;
-
-                    // Combine and format bills
-                    const allBills = [...(ownedBills || [])];
+                    // Process and format bills with proper payment status
+                    const processedBills = new Map();
                     
-                    // Add shared bills (avoiding duplicates)
-                    sharedBills?.forEach(share => {
-                        if (!allBills.find(bill => bill.id === share.bills.id)) {
-                            allBills.push({
-                                ...share.bills,
-                                user_share: share.amount,
-                                is_shared: true,
-                                user_paid: share.paid,
-                                share_id: share.id
+                    bills?.forEach(bill => {
+                        if (!processedBills.has(bill.id)) {
+                            // Get user's share info if it exists
+                            const userShare = bill.bill_shares?.find(share => share.user_id === this.user.id);
+                            
+                            processedBills.set(bill.id, {
+                                id: bill.id,
+                                name: bill.name,
+                                amount: bill.amount,
+                                due_date: bill.due_date,
+                                category: bill.category,
+                                recurring: bill.recurring,
+                                recurrence_interval: bill.recurrence_interval,
+                                paid: bill.paid,
+                                creator_paid: bill.creator_paid,
+                                splits: bill.splits || {},
+                                shared_with: bill.shared_with || [],
+                                is_shared: userShare ? true : false,
+                                user_share: userShare ? userShare.amount : bill.amount,
+                                user_paid: userShare ? userShare.paid : bill.creator_paid,
+                                share_id: userShare ? userShare.id : null,
+                                bill_shares: bill.bill_shares || [],
+                                user_id: bill.user_id
                             });
                         }
                     });
 
-                    return allBills;
+                    return Array.from(processedBills.values());
                 } catch (error) {
                     console.error('Get user bills error:', error);
                     return [];
                 }
             }
 
-            // FIXED: Filter out completed expenses
             async getUserExpenses() {
                 try {
-                    // Get expenses owned by user (excluding completed expenses)
-                    const { data: ownedExpenses, error: ownedError } = await supabase
+                    // Get expenses with enhanced data including split information
+                    const { data: expenses, error } = await supabase
                         .from('bills')
-                        .select('*, bill_shares(*)')
-                        .eq('user_id', this.user.id)
+                        .select(`
+                            *,
+                            bill_shares(*)
+                        `)
+                        .or(`user_id.eq.${this.user.id},bill_shares.user_id.eq.${this.user.id}`)
                         .eq('category', 'expense')
-                        .eq('paid', false) // Only get unpaid expenses
+                        .eq('paid', false)
                         .order('due_date', { ascending: false });
 
-                    if (ownedError) throw ownedError;
+                    if (error) throw error;
 
-                    // Get expenses shared with user (excluding completed expenses)
-                    // FIXED: Show expenses where the overall expense isn't complete, regardless of user's payment status
-                    const { data: sharedExpenses, error: sharedError } = await supabase
-                        .from('bill_shares')
-                        .select('*, bills!inner(*)')
-                        .eq('user_id', this.user.id)
-                        .eq('bills.category', 'expense')
-                        .eq('bills.paid', false); // Only get expenses that aren't fully paid (removed user paid filter)
-
-                    if (sharedError) throw sharedError;
-
-                    // Combine and format expenses
-                    const allExpenses = [...(ownedExpenses || [])];
+                    // Process and format expenses with proper payment status
+                    const processedExpenses = new Map();
                     
-                    // Add shared expenses (avoiding duplicates)
-                    sharedExpenses?.forEach(share => {
-                        if (!allExpenses.find(expense => expense.id === share.bills.id)) {
-                            allExpenses.push({
-                                ...share.bills,
-                                user_share: share.amount,
-                                is_shared: true,
-                                user_paid: share.paid,
-                                share_id: share.id
+                    expenses?.forEach(expense => {
+                        if (!processedExpenses.has(expense.id)) {
+                            // Get user's share info if it exists
+                            const userShare = expense.bill_shares?.find(share => share.user_id === this.user.id);
+                            
+                            processedExpenses.set(expense.id, {
+                                id: expense.id,
+                                name: expense.name,
+                                amount: expense.amount,
+                                due_date: expense.due_date,
+                                category: expense.category,
+                                description: expense.description,
+                                paid: expense.paid,
+                                creator_paid: expense.creator_paid,
+                                splits: expense.splits || {},
+                                shared_with: expense.shared_with || [],
+                                is_shared: userShare ? true : false,
+                                user_share: userShare ? userShare.amount : expense.amount,
+                                user_paid: userShare ? userShare.paid : expense.creator_paid,
+                                share_id: userShare ? userShare.id : null,
+                                bill_shares: expense.bill_shares || [],
+                                user_id: expense.user_id
                             });
                         }
                     });
 
-                    return allExpenses;
+                    return Array.from(processedExpenses.values());
                 } catch (error) {
                     console.error('Get user expenses error:', error);
                     return [];
@@ -925,48 +982,55 @@
             // NEW: Get payment history (completed bills and expenses)
             async getPaymentHistory() {
                 try {
-                    // Get completed bills/expenses owned by user
-                    const { data: ownedHistory, error: ownedError } = await supabase
+                    const { data: history, error } = await supabase
                         .from('bills')
-                        .select('*, bill_shares(*)')
-                        .eq('user_id', this.user.id)
-                        .eq('paid', true) // Only get completed items
+                        .select(`
+                            *,
+                            bill_shares(*)
+                        `)
+                        .or(`user_id.eq.${this.user.id},bill_shares.user_id.eq.${this.user.id}`)
+                        .eq('paid', true)
                         .order('paid_date', { ascending: false });
 
-                    if (ownedError) throw ownedError;
+                    if (error) throw error;
 
-                    // Get completed bills/expenses shared with user
-                    const { data: sharedHistory, error: sharedError } = await supabase
-                        .from('bill_shares')
-                        .select('*, bills!inner(*)')
-                        .eq('user_id', this.user.id)
-                        .eq('bills.paid', true); // Only get fully completed bills
-
-                    if (sharedError) throw sharedError;
-
-                    // Combine and format history
-                    const allHistory = [...(ownedHistory || [])];
+                    // Process and format history with proper payment status
+                    const processedHistory = new Map();
                     
-                    // Add shared history (avoiding duplicates)
-                    sharedHistory?.forEach(share => {
-                        if (!allHistory.find(item => item.id === share.bills.id)) {
-                            allHistory.push({
-                                ...share.bills,
-                                user_share: share.amount,
-                                is_shared: true,
-                                user_paid: share.paid,
-                                share_id: share.id
+                    history?.forEach(item => {
+                        if (!processedHistory.has(item.id)) {
+                            // Get user's share info if it exists
+                            const userShare = item.bill_shares?.find(share => share.user_id === this.user.id);
+                            
+                            processedHistory.set(item.id, {
+                                id: item.id,
+                                name: item.name,
+                                amount: item.amount,
+                                due_date: item.due_date,
+                                category: item.category,
+                                description: item.description,
+                                paid: item.paid,
+                                paid_date: item.paid_date,
+                                creator_paid: item.creator_paid,
+                                splits: item.splits || {},
+                                shared_with: item.shared_with || [],
+                                is_shared: userShare ? true : false,
+                                user_share: userShare ? userShare.amount : item.amount,
+                                user_paid: userShare ? userShare.paid : item.creator_paid,
+                                share_id: userShare ? userShare.id : null,
+                                user_id: item.user_id
                             });
                         }
                     });
 
-                    return allHistory;
+                    return Array.from(processedHistory.values());
                 } catch (error) {
                     console.error('Get payment history error:', error);
                     return [];
                 }
             }
 
+            // FIXED: Enhanced bill payment method
             async markBillPaid(billId, isShared = false, shareId = null) {
                 try {
                     if (isShared && shareId) {
@@ -994,7 +1058,7 @@
                         if (error) throw error;
                     }
 
-                    // Check if bill is fully paid and mark as complete
+                    // Always check if bill is fully paid after any payment
                     await this.checkAndCompleteBill(billId);
 
                     return true;
@@ -1004,21 +1068,36 @@
                 }
             }
 
+            // FIXED: Enhanced bill completion check
             async checkAndCompleteBill(billId) {
                 try {
-                    // Get bill and all its shares
+                    // Get bill and all its shares with detailed info
                     const { data: bill, error: billError } = await supabase
                         .from('bills')
                         .select('*, bill_shares(*)')
                         .eq('id', billId)
                         .single();
 
-                    if (billError) throw billError;
+                    if (billError) {
+                        console.error('Error fetching bill for completion check:', billError);
+                        return;
+                    }
 
-                    // Check if creator paid and all shares are paid
-                    const creatorPaid = bill.creator_paid;
-                    const allSharesPaid = bill.bill_shares.length === 0 || 
+                    // Check if creator paid (if there's a creator amount to pay)
+                    const creatorAmount = this.getCreatorAmount(bill);
+                    const creatorPaid = creatorAmount === 0 || bill.creator_paid;
+                    
+                    // Check if all shares are paid
+                    const allSharesPaid = bill.bill_shares?.length === 0 || 
                                          bill.bill_shares.every(share => share.paid);
+
+                    console.log('Bill completion check:', {
+                        billId,
+                        creatorAmount,
+                        creatorPaid,
+                        allSharesPaid,
+                        sharesCount: bill.bill_shares?.length || 0
+                    });
 
                     if (creatorPaid && allSharesPaid) {
                         // Mark entire bill as complete
@@ -1030,7 +1109,12 @@
                             })
                             .eq('id', billId);
 
-                        if (error) throw error;
+                        if (error) {
+                            console.error('Error marking bill as complete:', error);
+                            return;
+                        }
+
+                        console.log('Bill marked as complete:', billId);
 
                         // Handle recurring bills
                         if (bill.recurring && bill.recurrence_interval) {
@@ -1040,6 +1124,16 @@
                 } catch (error) {
                     console.error('Check and complete bill error:', error);
                 }
+            }
+
+            // Helper method to calculate creator's amount to pay
+            getCreatorAmount(bill) {
+                if (!bill.splits || Object.keys(bill.splits).length === 0) {
+                    return bill.amount;
+                }
+                
+                const creatorSplit = bill.splits[bill.user_id];
+                return creatorSplit || 0;
             }
 
             async createNextRecurringBill(originalBill) {
@@ -1223,7 +1317,8 @@
                 this.activeTab = 'dashboard';
                 this.privateMode = false;
                 this.loading = false;
-                this.receiptItems = []; // For tracking expense items
+                this.receiptItems = [];
+                this.connections = [];
                 this.init();
             }
 
@@ -1234,6 +1329,7 @@
                     if (profile) {
                         this.currentUser = profile;
                         this.currentView = 'app';
+                        this.connections = await storage.getUserConnections();
                     }
                 }
                 
@@ -1245,6 +1341,7 @@
             handleSignOut() {
                 this.currentUser = null;
                 this.currentView = 'login';
+                this.connections = [];
                 this.render();
             }
 
@@ -1329,6 +1426,7 @@
                         case 'remove-connection':
                             if (confirm('Remove this connection? This will also remove any shared bills.')) {
                                 await storage.removeConnection(element.dataset.connectionId);
+                                this.connections = await storage.getUserConnections();
                                 this.render();
                             }
                             break;
@@ -1420,6 +1518,7 @@
                             if (user) {
                                 const profile = await storage.getUserProfile();
                                 this.currentUser = profile;
+                                this.connections = await storage.getUserConnections();
                                 this.currentView = 'app';
                                 this.render();
                             }
@@ -1432,6 +1531,7 @@
                             if (newUser) {
                                 const profile = await storage.getUserProfile();
                                 this.currentUser = profile;
+                                this.connections = await storage.getUserConnections();
                                 this.currentView = 'app';
                                 this.render();
                             }
@@ -1466,6 +1566,7 @@
                             }
                             
                             await storage.acceptInvitation(foundInvitation.id, data.inviteCode);
+                            this.connections = await storage.getUserConnections();
                             this.showSuccess('Connection established successfully!');
                             this.closeModal();
                             this.render();
@@ -1559,7 +1660,7 @@
                             }
 
                             await storage.addExpense(expenseData);
-                            this.receiptItems = []; // Reset receipt items
+                            this.receiptItems = [];
                             this.closeModal();
                             this.render();
                             break;
@@ -1609,7 +1710,7 @@
             closeModal() {
                 const modal = document.querySelector('.fixed.inset-0');
                 if (modal) modal.remove();
-                this.receiptItems = []; // Reset receipt items when closing modal
+                this.receiptItems = [];
             }
 
             async getModalContent(type, itemId) {
@@ -1631,7 +1732,7 @@
                         return this.buildNotificationSettingsModal();
                         
                     case 'connections':
-                        return '<h3 class="text-xl font-bold mb-4">Manage Connections</h3>' +
+                        return '<h3 class="text-xl font-bold mb-4">Manage Partners</h3>' +
                             '<div class="mb-6 p-4 bg-blue-50 rounded-lg">' +
                             '<h4 class="font-medium mb-2">Invite Someone</h4>' +
                             '<p class="text-sm text-gray-600 mb-3">Generate an invite code to share bills.</p>' +
@@ -1654,12 +1755,10 @@
                         return this.buildIncomeModal(isEdit, item);
                     
                     case 'bill':
-                        const connections = await storage.getUserConnections();
-                        return this.buildBillModal(isEdit, item, connections);
+                        return this.buildBillModal(isEdit, item, this.connections);
 
                     case 'expense':
-                        const expenseConnections = await storage.getUserConnections();
-                        return this.buildExpenseModal(expenseConnections);
+                        return this.buildExpenseModal(this.connections);
 
                     default:
                         return '<p>Unknown modal type</p>';
@@ -1839,7 +1938,7 @@
                         '</div>';
                 } else {
                     sharingSection = '<div class="p-4 bg-gray-50 rounded-lg text-center">' +
-                        '<p class="text-sm text-gray-600">No connections available. Add connections to share bills.</p>' +
+                        '<p class="text-sm text-gray-600">No partners available. Add partners to share bills.</p>' +
                         '</div>';
                 }
                 
@@ -1862,7 +1961,7 @@
             }
 
             buildExpenseModal(connections) {
-                this.receiptItems = [{ name: '', amount: 0 }]; // Initialize with one empty item
+                this.receiptItems = [{ name: '', amount: 0 }];
                 
                 let connectionOptions = '<option value="">Just me (no sharing)</option>';
                 for (const conn of connections) {
@@ -1910,7 +2009,7 @@
                         '</div>';
                 } else {
                     sharingSection = '<div class="p-4 bg-gray-50 rounded-lg text-center">' +
-                        '<p class="text-sm text-gray-600">No connections available. Add connections to share expenses.</p>' +
+                        '<p class="text-sm text-gray-600">No partners available. Add partners to share expenses.</p>' +
                         '</div>';
                 }
                 
@@ -1937,11 +2036,13 @@
                     '</form>';
             }
 
+            // FIXED: Enhanced bill status with better logic
             getBillStatus(bill) {
                 if (bill.paid) {
                     return { status: 'Complete', class: 'status-complete' };
                 }
 
+                // For shared bills/expenses
                 if (bill.is_shared) {
                     if (bill.user_paid) {
                         return { status: 'Waiting for others', class: 'status-waiting-others' };
@@ -1949,12 +2050,50 @@
                         return { status: 'Waiting for you', class: 'status-waiting-you' };
                     }
                 } else {
+                    // For bills created by this user
                     if (bill.creator_paid) {
                         return { status: 'Waiting for others', class: 'status-waiting-others' };
                     } else {
                         return { status: 'Pending', class: 'status-pending' };
                     }
                 }
+            }
+
+            // FIXED: Enhanced payment breakdown display
+            buildPaymentBreakdown(bill) {
+                if (!bill.splits || Object.keys(bill.splits).length === 0) {
+                    return '';
+                }
+
+                let breakdownHTML = '<div class="payment-breakdown">' +
+                    '<div class="text-sm font-medium text-gray-700 mb-2">Payment Breakdown:</div>';
+
+                // Show current user's amount
+                const userAmount = bill.splits[this.currentUser.id] || 0;
+                breakdownHTML += '<div class="payment-breakdown-item">' +
+                    '<span>You</span>' +
+                    '<span>$' + userAmount.toFixed(2) + '</span>' +
+                    '</div>';
+
+                // Show other users' amounts
+                Object.entries(bill.splits).forEach(([userId, amount]) => {
+                    if (userId !== this.currentUser.id) {
+                        const connection = this.connections.find(c => c.id === userId);
+                        const userName = connection ? connection.name : 'Unknown User';
+                        breakdownHTML += '<div class="payment-breakdown-item">' +
+                            '<span>' + userName + '</span>' +
+                            '<span>$' + amount.toFixed(2) + '</span>' +
+                            '</div>';
+                    }
+                });
+
+                breakdownHTML += '<div class="payment-breakdown-item">' +
+                    '<span>Total</span>' +
+                    '<span>$' + bill.amount.toFixed(2) + '</span>' +
+                    '</div>';
+
+                breakdownHTML += '</div>';
+                return breakdownHTML;
             }
 
             async calculateTotals() {
@@ -1975,22 +2114,14 @@
                 let monthlyBills = 0;
                 bills.forEach(bill => {
                     if (!bill.paid) {
-                        if (bill.user_share) {
-                            monthlyBills += bill.user_share;
-                        } else {
-                            monthlyBills += bill.amount;
-                        }
+                        monthlyBills += bill.user_share;
                     }
                 });
 
                 let pendingExpenses = 0;
                 expenses.forEach(expense => {
                     if (!expense.paid) {
-                        if (expense.user_share) {
-                            pendingExpenses += expense.user_share;
-                        } else {
-                            pendingExpenses += expense.amount;
-                        }
+                        pendingExpenses += expense.user_share;
                     }
                 });
                 
@@ -2008,11 +2139,14 @@
                 if (this.currentView === 'login') {
                     app.innerHTML = this.renderLogin();
                 } else {
+                    // Refresh connections
+                    this.connections = await storage.getUserConnections();
+                    
                     const totals = await this.calculateTotals();
                     const incomes = await storage.getUserIncomes();
                     const bills = await storage.getUserBills();
                     const expenses = await storage.getUserExpenses();
-                    const history = await storage.getPaymentHistory(); // NEW: Get payment history
+                    const history = await storage.getPaymentHistory();
                     const notifications = await storage.getUpcomingBillNotifications();
                     
                     app.innerHTML = this.renderApp(totals, incomes, bills, expenses, history, notifications);
@@ -2062,7 +2196,7 @@
 
             renderApp(totals, incomes, bills, expenses, history, notifications) {
                 const userName = this.currentUser?.name || 'User';
-                const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history', 'connections']; // ADDED: history tab
+                const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history']; // REMOVED: connections tab
                 
                 let tabsHTML = '';
                 for (const tab of tabs) {
@@ -2074,7 +2208,7 @@
                         notificationDot = '<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">' + notifications.length + '</span>';
                     }
                     
-                    tabsHTML += '<button data-action="switch-tab" data-tab="' + tab + '" class="btn py-4 px-4 border-b-2 font-medium text-sm transition whitespace-nowrap relative ' + activeClass + '">' + tabName + notificationDot + '</button>';
+                    tabsHTML += '<button data-action="switch-tab" data-tab="' + tab + '" class="btn py-4 px-4 border-b-2 font-medium text-sm transition whitespace-nowrap relative tab-button ' + activeClass + '">' + tabName + notificationDot + '</button>';
                 }
                 
                 const privateModeIcon = this.privateMode ? 
@@ -2090,10 +2224,8 @@
                     mainContent = this.renderBillsTab(bills);
                 } else if (this.activeTab === 'expenses') {
                     mainContent = this.renderExpensesTab(expenses);
-                } else if (this.activeTab === 'history') { // NEW: History tab
+                } else if (this.activeTab === 'history') {
                     mainContent = this.renderHistoryTab(history);
-                } else if (this.activeTab === 'connections') {
-                    mainContent = this.renderConnectionsTab();
                 }
                 
                 return '<div class="min-h-screen bg-gray-50">' +
@@ -2127,9 +2259,9 @@
                     '</div>' +
                     '</div>' +
                     '</header>' +
-                    '<div class="bg-white shadow-sm border-b sticky top-16 z-30">' +
+                    '<div class="bg-white shadow-sm border-b sticky top-16 z-30 tabs-container">' +
                     '<div class="max-w-7xl mx-auto">' +
-                    '<div class="flex space-x-4 px-4">' + tabsHTML + '</div>' +
+                    '<div class="flex space-x-4 px-4 tabs-flex">' + tabsHTML + '</div>' +
                     '</div>' +
                     '</div>' +
                     '<div class="max-w-7xl mx-auto p-4">' + mainContent + '</div>' +
@@ -2180,9 +2312,47 @@
                         notificationsList +
                         '</div>';
                 }
+
+                // ADDED: Partners Connected section
+                let partnersSection = '';
+                if (this.connections.length > 0) {
+                    let partnersHTML = '';
+                    for (const connection of this.connections.slice(0, 3)) { // Show first 3 partners
+                        partnersHTML += '<div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">' +
+                            '<div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">' +
+                            '<svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
+                            '</svg>' +
+                            '</div>' +
+                            '<div class="flex-1">' +
+                            '<p class="font-medium text-sm">' + connection.name + '</p>' +
+                            '<p class="text-xs text-gray-600">' + connection.email + '</p>' +
+                            '</div>' +
+                            '<span class="connection-badge connection-active text-xs">Connected</span>' +
+                            '</div>';
+                    }
+                    
+                    if (this.connections.length > 3) {
+                        partnersHTML += '<div class="text-center p-2 text-gray-500 text-sm">+' + (this.connections.length - 3) + ' more partners</div>';
+                    }
+                    
+                    partnersSection = '<div class="card card-mobile mb-6">' +
+                        '<div class="flex items-center justify-between mb-4">' +
+                        '<h3 class="text-lg font-bold flex items-center">' +
+                        '<svg class="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
+                        '</svg>' +
+                        'Partners Connected (' + this.connections.length + ')' +
+                        '</h3>' +
+                        '<button data-action="show-modal" data-modal="connections" class="btn btn-secondary text-sm">Manage</button>' +
+                        '</div>' +
+                        '<div class="space-y-2">' + partnersHTML + '</div>' +
+                        '</div>';
+                }
                 
                 return '<div class="space-y-6 fade-in">' +
                     notificationsSection +
+                    partnersSection +
                     '<div class="grid-responsive">' +
                     '<div class="card card-mobile">' +
                     '<div class="flex items-center justify-between mb-2">' +
@@ -2348,6 +2518,9 @@
                         const totalInfo = (isShared && bill.amount !== userAmount) ? 
                             '<p class="text-xs text-gray-500">Total: $' + bill.amount.toFixed(2) + '</p>' : '';
                         
+                        // FIXED: Enhanced payment breakdown
+                        const paymentBreakdown = this.buildPaymentBreakdown(bill);
+                        
                         let actionButton = '';
                         if (status.status === 'Complete') {
                             actionButton = '<div class="mt-3 text-center text-green-600 font-medium">✓ Complete' + 
@@ -2391,6 +2564,7 @@
                             '</button>' +
                             '</div>' +
                             '</div>' +
+                            paymentBreakdown +
                             actionButton +
                             '</div>';
                     }
@@ -2460,6 +2634,9 @@
                             });
                             receiptItemsHTML += '</ul></div>';
                         }
+
+                        // FIXED: Enhanced payment breakdown for expenses
+                        const paymentBreakdown = this.buildPaymentBreakdown(expense);
                         
                         let actionButton = '';
                         if (status.status === 'Complete') {
@@ -2504,6 +2681,7 @@
                             '</button>' +
                             '</div>' +
                             '</div>' +
+                            paymentBreakdown +
                             actionButton +
                             '</div>';
                     }
@@ -2524,7 +2702,6 @@
                     '</div>';
             }
 
-            // NEW: History tab for completed bills and expenses
             renderHistoryTab(history) {
                 let historyContent = '';
                 
@@ -2615,97 +2792,6 @@
                     '</div>' +
                     '<div class="p-6">' + historyContent + '</div>' +
                     '</div>';
-            }
-
-            renderConnectionsTab() {
-                // This will be populated after render, since it needs async data
-                setTimeout(async () => {
-                    const connections = await storage.getUserConnections();
-                    const bills = await storage.getUserBills();
-                    const expenses = await storage.getUserExpenses();
-                    const allShared = [...bills, ...expenses].filter(item => item.is_shared);
-                    
-                    let connectionsHTML = '';
-                    
-                    if (connections.length === 0) {
-                        connectionsHTML = '<div class="text-center py-12">' +
-                            '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
-                            '</svg>' +
-                            '<p class="text-gray-500">No connections yet</p>' +
-                            '<p class="text-sm text-gray-400 mt-2">Connect with family or roommates to share bills and expenses</p>' +
-                            '</div>';
-                    } else {
-                        let connectionCards = '';
-                        for (const connection of connections) {
-                            const connectionSharedItems = allShared.filter(item => 
-                                item.shared_with && item.shared_with.includes(connection.id)
-                            );
-                            
-                            let itemsListHTML = '';
-                            if (connectionSharedItems.length > 0) {
-                                for (const item of connectionSharedItems.slice(0, 3)) {
-                                    const status = this.getBillStatus(item);
-                                    const itemType = item.category === 'expense' ? 'Expense' : 'Bill';
-                                    itemsListHTML += '<div class="flex justify-between text-xs items-center">' +
-                                        '<span>' + item.name + ' (' + itemType + ')</span>' +
-                                        '<div class="text-right">' +
-                                        '<span class="font-medium">$' + (item.user_share || item.amount).toFixed(2) + '</span>' +
-                                        '<div class="' + status.class + ' text-xs px-1 rounded">' + status.status + '</div>' +
-                                        '</div>' +
-                                        '</div>';
-                                }
-                                
-                                if (connectionSharedItems.length > 3) {
-                                    itemsListHTML += '<div class="text-xs text-gray-500">+' + (connectionSharedItems.length - 3) + ' more items</div>';
-                                }
-                            }
-                            
-                            connectionCards += '<div class="bg-gray-50 rounded-lg p-4">' +
-                                '<div class="flex items-center space-x-3 mb-3">' +
-                                '<div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">' +
-                                '<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
-                                '</svg>' +
-                                '</div>' +
-                                '<div class="flex-1">' +
-                                '<p class="font-medium">' + connection.name + '</p>' +
-                                '<p class="text-sm text-gray-600">' + connection.email + '</p>' +
-                                '</div>' +
-                                '<span class="connection-badge connection-active">Connected</span>' +
-                                '</div>' +
-                                '<div class="text-sm text-gray-600 mb-2">' +
-                                '<p><strong>' + connectionSharedItems.length + '</strong> shared items</p>' +
-                                '</div>' +
-                                (itemsListHTML ? '<div class="space-y-1 mb-3">' + itemsListHTML + '</div>' : '') +
-                                '<button data-action="remove-connection" data-connection-id="' + connection.connection_id + '" class="w-full btn btn-danger text-sm py-2">Remove Connection</button>' +
-                                '</div>';
-                        }
-                        connectionsHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">' + connectionCards + '</div>';
-                    }
-                    
-                    const connectionsContent = '<div class="space-y-6 fade-in">' +
-                        '<div class="card">' +
-                        '<div class="p-6 border-b flex justify-between items-center">' +
-                        '<h2 class="text-xl font-bold">Connections</h2>' +
-                        '<button data-action="show-modal" data-modal="connections" class="btn btn-primary">' +
-                        '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
-                        '</svg>' +
-                        '<span>Manage Connections</span>' +
-                        '</button>' +
-                        '</div>' +
-                        '<div class="p-6">' + connectionsHTML + '</div>' +
-                        '</div>' +
-                        '</div>';
-                    
-                    const connectionsContainer = document.querySelector('#connections-content');
-                    if (connectionsContainer) {
-                        connectionsContainer.innerHTML = connectionsContent;
-                    }
-                }, 100);
-                
-                return '<div id="connections-content" class="space-y-6"><div class="text-center py-8">Loading connections...</div></div>';
             }
         }
 
