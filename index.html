@@ -919,6 +919,18 @@
 
                     // Enhance bills with participant details
                     const enhancedBills = await Promise.all(allBills.map(async (bill) => {
+                        // FIXED: Check if bill is shared for the creator
+                        if (bill.user_id === this.user.id && bill.bill_shares && bill.bill_shares.length > 0) {
+                            bill.is_shared = true;
+                            // Set user's share amount for the creator
+                            const creatorShare = bill.bill_shares.find(share => share.user_id === this.user.id);
+                            if (creatorShare) {
+                                bill.user_share = creatorShare.amount;
+                                bill.user_paid = creatorShare.paid;
+                                bill.share_id = creatorShare.id;
+                            }
+                        }
+                        
                         if (bill.shared_with && bill.shared_with.length > 0) {
                             // Get all participant details
                             const { data: participants, error: participantsError } = await supabase
@@ -982,6 +994,18 @@
 
                     // Enhance expenses with participant details
                     const enhancedExpenses = await Promise.all(allExpenses.map(async (expense) => {
+                        // FIXED: Check if expense is shared for the creator
+                        if (expense.user_id === this.user.id && expense.bill_shares && expense.bill_shares.length > 0) {
+                            expense.is_shared = true;
+                            // Set user's share amount for the creator
+                            const creatorShare = expense.bill_shares.find(share => share.user_id === this.user.id);
+                            if (creatorShare) {
+                                expense.user_share = creatorShare.amount;
+                                expense.user_paid = creatorShare.paid;
+                                expense.share_id = creatorShare.id;
+                            }
+                        }
+                        
                         if (expense.shared_with && expense.shared_with.length > 0) {
                             // Get all participant details
                             const { data: participants, error: participantsError } = await supabase
@@ -2867,3 +2891,4 @@
     </script>
 </body>
 </html>
+
