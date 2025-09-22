@@ -1140,11 +1140,18 @@
                         // Non-shared bill - only check creator_paid
                         isFullyPaid = bill.creator_paid;
                     } else {
-                        // Shared bill - all shares must be paid
+                        // Shared bill - ALL shares must be paid (including creator's)
                         isFullyPaid = bill.bill_shares.every(share => share.paid);
+                        
+                        // DEBUG: Log the payment status
+                        console.log(`Bill ${billId}: ${bill.bill_shares.filter(s => s.paid).length}/${bill.bill_shares.length} shares paid`);
+                        bill.bill_shares.forEach(share => {
+                            console.log(`User ${share.user_id}: paid=${share.paid}, amount=${share.amount}`);
+                        });
                     }
 
                     if (isFullyPaid) {
+                        console.log(`Marking bill ${billId} as complete`);
                         // Mark entire bill as complete
                         const { error } = await supabase
                             .from('bills')
@@ -1160,6 +1167,8 @@
                         if (bill.recurring && bill.recurrence_interval) {
                             await this.createNextRecurringBill(bill);
                         }
+                    } else {
+                        console.log(`Bill ${billId} not yet complete`);
                     }
                 } catch (error) {
                     console.error('Check and complete bill error:', error);
