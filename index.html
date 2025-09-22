@@ -1140,18 +1140,11 @@
                         // Non-shared bill - only check creator_paid
                         isFullyPaid = bill.creator_paid;
                     } else {
-                        // Shared bill - ALL shares must be paid (including creator's)
+                        // Shared bill - all shares must be paid
                         isFullyPaid = bill.bill_shares.every(share => share.paid);
-                        
-                        // DEBUG: Log the payment status
-                        console.log(`Bill ${billId}: ${bill.bill_shares.filter(s => s.paid).length}/${bill.bill_shares.length} shares paid`);
-                        bill.bill_shares.forEach(share => {
-                            console.log(`User ${share.user_id}: paid=${share.paid}, amount=${share.amount}`);
-                        });
                     }
 
                     if (isFullyPaid) {
-                        console.log(`Marking bill ${billId} as complete`);
                         // Mark entire bill as complete
                         const { error } = await supabase
                             .from('bills')
@@ -1167,8 +1160,6 @@
                         if (bill.recurring && bill.recurrence_interval) {
                             await this.createNextRecurringBill(bill);
                         }
-                    } else {
-                        console.log(`Bill ${billId} not yet complete`);
                     }
                 } catch (error) {
                     console.error('Check and complete bill error:', error);
@@ -1634,28 +1625,23 @@
                                 recurrence_interval: data.recurring === 'true' ? data.recurrenceInterval : null
                             };
 
-                            // Handle shared bills (replace existing logic)
-                            const selectedConnections = Array.from(document.querySelectorAll('.connection-checkbox:checked')).map(cb => cb.value);
-                            if (selectedConnections.length > 0) {
-                                billData.shared_with = selectedConnections;
+                            // Handle shared bills
+                            if (data.shareWith && data.shareWith !== '') {
+                                billData.shared_with = [data.shareWith];
                                 billData.splits = {};
                                 
-                                const participants = [this.currentUser.id, ...selectedConnections];
-                                
                                 if (data.splitType === 'equal') {
-                                    const equalAmount = billData.amount / participants.length;
-                                    participants.forEach(userId => {
-                                        billData.splits[userId] = equalAmount;
-                                    });
-                                } else if (data.splitType === 'percentage') {
-                                    participants.forEach(userId => {
-                                        const percentage = parseFloat(data['percentage_' + userId]) || 0;
-                                        billData.splits[userId] = (billData.amount * percentage / 100);
-                                    });
+                                    billData.splits[this.currentUser.id] = billData.amount / 2;
+                                    billData.splits[data.shareWith] = billData.amount / 2;
                                 } else if (data.splitType === 'custom') {
-                                    participants.forEach(userId => {
-                                        billData.splits[userId] = parseFloat(data['custom_' + userId]) || 0;
-                                    });
+                                    const userAmount = parseFloat(data.userAmount) || 0;
+                                    billData.splits[this.currentUser.id] = userAmount;
+                                    billData.splits[data.shareWith] = billData.amount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
+                                    billData.splits[this.currentUser.id] = (billData.amount * userPercentage / 100);
+                                    billData.splits[data.shareWith] = (billData.amount * otherPercentage / 100);
                                 }
                             }
                             
@@ -1676,28 +1662,23 @@
                                 items: this.receiptItems.filter(item => item.name && item.amount > 0)
                             };
 
-                            // Handle shared expenses (UPDATED for multi-person)
-                            const selectedExpenseConnections = Array.from(document.querySelectorAll('.connection-checkbox:checked')).map(cb => cb.value);
-                            if (selectedExpenseConnections.length > 0) {
-                                expenseData.shared_with = selectedExpenseConnections;
+                            // Handle shared expenses
+                            if (data.shareWith && data.shareWith !== '') {
+                                expenseData.shared_with = [data.shareWith];
                                 expenseData.splits = {};
                                 
-                                const expenseParticipants = [this.currentUser.id, ...selectedExpenseConnections];
-                                
                                 if (data.splitType === 'equal') {
-                                    const equalAmount = expenseData.totalAmount / expenseParticipants.length;
-                                    expenseParticipants.forEach(userId => {
-                                        expenseData.splits[userId] = equalAmount;
-                                    });
-                                } else if (data.splitType === 'percentage') {
-                                    expenseParticipants.forEach(userId => {
-                                        const percentage = parseFloat(data['percentage_' + userId]) || 0;
-                                        expenseData.splits[userId] = (expenseData.totalAmount * percentage / 100);
-                                    });
+                                    expenseData.splits[this.currentUser.id] = expenseData.totalAmount / 2;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount / 2;
                                 } else if (data.splitType === 'custom') {
-                                    expenseParticipants.forEach(userId => {
-                                        expenseData.splits[userId] = parseFloat(data['custom_' + userId]) || 0;
-                                    });
+                                    const userAmount = parseFloat(data.userAmount) || 0;
+                                    expenseData.splits[this.currentUser.id] = userAmount;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
+                                    expenseData.splits[this.currentUser.id] = (expenseData.totalAmount * userPercentage / 100);
+                                    expenseData.splits[data.shareWith] = (expenseData.totalAmount * otherPercentage / 100);
                                 }
                             }
 
@@ -1945,25 +1926,15 @@
                 if (connections.length > 0) {
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
                         '<h4 class="font-medium mb-2">Share this bill?</h4>' +
-                        '<div class="mb-3">' +
-                        '<label class="block text-sm font-medium mb-2">Select people to share with:</label>' +
-                        '<div class="space-y-2 max-h-32 overflow-y-auto border rounded p-2 bg-white">';
-                    
-                    for (const conn of connections) {
-                        sharingSection += '<label class="flex items-center space-x-2">' +
-                            '<input type="checkbox" name="shareWith" value="' + conn.id + '" class="connection-checkbox">' +
-                            '<span class="text-sm">' + conn.name + '</span>' +
-                            '</label>';
-                    }
-                    
-                    sharingSection += '</div>' +
-                        '</div>' +
+                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        connectionOptions +
+                        '</select>' +
                         '<div id="split-options" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
@@ -1975,12 +1946,18 @@
                         '</label>' +
                         '</div>' +
                         '<div id="percentage-split" style="display:none;">' +
-                        '<div id="percentage-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: <span id="percentage-total">0</span>%</div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
                         '</div>' +
                         '<div id="custom-split" style="display:none;">' +
-                        '<div id="custom-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: $<span id="custom-total">0.00</span></div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
+                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
                         '</div>' +
                         '</div>';
@@ -2020,25 +1997,15 @@
                 if (connections.length > 0) {
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
                         '<h4 class="font-medium mb-2">Share this expense?</h4>' +
-                        '<div class="mb-3">' +
-                        '<label class="block text-sm font-medium mb-2">Select people to share with:</label>' +
-                        '<div class="space-y-2 max-h-32 overflow-y-auto border rounded p-2 bg-white">';
-                    
-                    for (const conn of connections) {
-                        sharingSection += '<label class="flex items-center space-x-2">' +
-                            '<input type="checkbox" name="shareWith" value="' + conn.id + '" class="connection-checkbox">' +
-                            '<span class="text-sm">' + conn.name + '</span>' +
-                            '</label>';
-                    }
-                    
-                    sharingSection += '</div>' +
-                        '</div>' +
+                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        connectionOptions +
+                        '</select>' +
                         '<div id="split-options" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
@@ -2050,12 +2017,18 @@
                         '</label>' +
                         '</div>' +
                         '<div id="percentage-split" style="display:none;">' +
-                        '<div id="percentage-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: <span id="percentage-total">0</span>%</div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
                         '</div>' +
                         '<div id="custom-split" style="display:none;">' +
-                        '<div id="custom-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: $<span id="custom-total">0.00</span></div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
+                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
                         '</div>' +
                         '</div>';
@@ -2861,112 +2834,7 @@
             }
         }
 
-        // Updated helper function for multi-person splitting
-        function toggleSplitType(value) {
-            const splitOptions = document.getElementById('split-options');
-            const checkboxes = document.querySelectorAll('.connection-checkbox:checked');
-            
-            if (splitOptions) {
-                if (checkboxes.length > 0) {
-                    splitOptions.style.display = 'block';
-                    updateSplitInputs();
-                } else {
-                    splitOptions.style.display = 'none';
-                }
-            }
-        }
-
-        function updateSplitInputs() {
-            const checkboxes = document.querySelectorAll('.connection-checkbox:checked');
-            const splitType = document.querySelector('input[name="splitType"]:checked')?.value;
-            const billAmount = parseFloat(document.querySelector('input[name="amount"]')?.value || document.querySelector('input[name="totalAmount"]')?.value || 0);
-            
-            if (checkboxes.length === 0) return;
-            
-            const participants = [
-                { id: window.app.currentUser.id, name: 'You' }
-            ];
-            
-            checkboxes.forEach(checkbox => {
-                const connectionName = checkbox.parentElement.querySelector('span').textContent;
-                participants.push({ id: checkbox.value, name: connectionName });
-            });
-            
-            updatePercentageInputs(participants, billAmount);
-            updateCustomInputs(participants, billAmount);
-        }
-
-        function updatePercentageInputs(participants, totalAmount) {
-            const container = document.getElementById('percentage-inputs');
-            if (!container) return;
-            
-            const equalPercentage = Math.round(100 / participants.length);
-            let html = '';
-            
-            participants.forEach((participant, index) => {
-                const percentage = index === participants.length - 1 ? 
-                    100 - (equalPercentage * (participants.length - 1)) : equalPercentage;
-                
-                html += '<div class="flex items-center space-x-2 mb-2">' +
-                    '<label class="text-sm w-20">' + participant.name + ':</label>' +
-                    '<input type="number" name="percentage_' + participant.id + '" value="' + percentage + '" ' +
-                    'min="0" max="100" step="1" class="form-input flex-1 percentage-input" ' +
-                    'onchange="updatePercentageTotal()">' +
-                    '<span class="text-sm">%</span>' +
-                    '</div>';
-            });
-            
-            container.innerHTML = html;
-            updatePercentageTotal();
-        }
-
-        function updateCustomInputs(participants, totalAmount) {
-            const container = document.getElementById('custom-inputs');
-            if (!container) return;
-            
-            const equalAmount = (totalAmount / participants.length).toFixed(2);
-            let html = '';
-            
-            participants.forEach(participant => {
-                html += '<div class="flex items-center space-x-2 mb-2">' +
-                    '<label class="text-sm w-20">' + participant.name + ':</label>' +
-                    '<input type="number" name="custom_' + participant.id + '" value="' + equalAmount + '" ' +
-                    'min="0" step="0.01" class="form-input flex-1 custom-input" ' +
-                    'onchange="updateCustomTotal()">' +
-                    '</div>';
-            });
-            
-            container.innerHTML = html;
-            updateCustomTotal();
-        }
-
-        function updatePercentageTotal() {
-            const inputs = document.querySelectorAll('.percentage-input');
-            let total = 0;
-            inputs.forEach(input => {
-                total += parseFloat(input.value) || 0;
-            });
-            const totalSpan = document.getElementById('percentage-total');
-            if (totalSpan) {
-                totalSpan.textContent = total;
-                totalSpan.style.color = total === 100 ? '#059669' : '#dc2626';
-            }
-        }
-
-        function updateCustomTotal() {
-            const inputs = document.querySelectorAll('.custom-input');
-            let total = 0;
-            inputs.forEach(input => {
-                total += parseFloat(input.value) || 0;
-            });
-            const totalSpan = document.getElementById('custom-total');
-            if (totalSpan) {
-                totalSpan.textContent = total.toFixed(2);
-                const expectedTotal = parseFloat(document.querySelector('input[name="amount"]')?.value || document.querySelector('input[name="totalAmount"]')?.value || 0);
-                totalSpan.style.color = Math.abs(total - expectedTotal) < 0.01 ? '#059669' : '#dc2626';
-            }
-        }
-
+        // Helper functions for dynamic UI
         function toggleSplitType(shareWithValue) {
             const splitOptions = document.getElementById('split-options');
             if (splitOptions) {
@@ -2993,16 +2861,9 @@
         window.toggleSplitType = toggleSplitType;
         window.toggleRecurrenceOptions = toggleRecurrenceOptions;
         window.updatePercentageOther = updatePercentageOther;
-        window.updateSplitInputs = updateSplitInputs;
-        window.updatePercentageTotal = updatePercentageTotal;
-        window.updateCustomTotal = updateCustomTotal;
 
-        // Handle connection checkbox changes
+        // Handle custom split radio change
         document.addEventListener('change', (e) => {
-            if (e.target.classList.contains('connection-checkbox')) {
-                toggleSplitType();
-            }
-            
             if (e.target.name === 'splitType') {
                 const customSplit = document.getElementById('custom-split');
                 const percentageSplit = document.getElementById('percentage-split');
@@ -3011,11 +2872,6 @@
                     customSplit.style.display = e.target.value === 'custom' ? 'block' : 'none';
                     percentageSplit.style.display = e.target.value === 'percentage' ? 'block' : 'none';
                 }
-            }
-            
-            if (e.target.name === 'amount' || e.target.name === 'totalAmount') {
-                // Update split inputs when amount changes
-                setTimeout(updateSplitInputs, 100);
             }
         });
 
