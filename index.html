@@ -790,12 +790,9 @@
                 }
             }
 
-            // FIXED: Enhanced addBill function to properly create bill shares for all participants
+            // Enhanced Bill/Expense methods
             async addBill(billData) {
                 try {
-                    console.log('\n=== Creating Bill ===');
-                    console.log('Bill data:', billData);
-
                     const billToInsert = {
                         ...billData,
                         user_id: this.user.id,
@@ -811,57 +808,22 @@
 
                     if (error) throw error;
 
-                    console.log('Bill created:', data);
+                    // If shared with someone, create bill shares for ALL participants including creator
+                    if (billData.shared_with && billData.splits) {
+                        const shares = Object.entries(billData.splits).map(([userId, amount]) => ({
+                            bill_id: data.id,
+                            user_id: userId,
+                            amount: amount,
+                            paid: false
+                        }));
 
-                    // FIXED: Create bill shares for ALL participants including creator
-                    if (billData.shared_with && billData.shared_with.length > 0 && billData.splits) {
-                        console.log('Creating bill shares for shared bill...');
-                        console.log('Shared with:', billData.shared_with);
-                        console.log('Splits:', billData.splits);
+                        const { error: sharesError } = await supabase
+                            .from('bill_shares')
+                            .insert(shares);
 
-                        // CRITICAL FIX: Ensure ALL participants (including creator) get bill_shares
-                        const allParticipants = [this.user.id, ...billData.shared_with];
-                        console.log('All participants:', allParticipants);
-
-                        const shares = [];
-                        
-                        // Create shares for each participant
-                        allParticipants.forEach(userId => {
-                            const amount = billData.splits[userId];
-                            if (amount && amount > 0) {
-                                shares.push({
-                                    bill_id: data.id,
-                                    user_id: userId,
-                                    amount: amount,
-                                    paid: false
-                                });
-                            } else {
-                                console.warn(`Warning: No split amount found for user ${userId}`);
-                            }
-                        });
-
-                        console.log('Creating bill_shares:', shares);
-
-                        if (shares.length > 0) {
-                            const { error: sharesError } = await supabase
-                                .from('bill_shares')
-                                .insert(shares);
-
-                            if (sharesError) {
-                                console.error('Error creating bill shares:', sharesError);
-                                throw sharesError;
-                            }
-
-                            console.log(`✅ Created ${shares.length} bill shares successfully`);
-                        } else {
-                            console.error('❌ No valid bill shares to create');
-                            throw new Error('Failed to create bill shares - no valid splits found');
-                        }
-                    } else {
-                        console.log('Non-shared bill created - no bill shares needed');
+                        if (sharesError) throw sharesError;
                     }
 
-                    console.log('=== Bill Creation Complete ===\n');
                     return data;
                 } catch (error) {
                     console.error('Add bill error:', error);
@@ -869,12 +831,8 @@
                 }
             }
 
-            // FIXED: Enhanced addExpense function to properly create bill shares for all participants
             async addExpense(expenseData) {
                 try {
-                    console.log('\n=== Creating Expense ===');
-                    console.log('Expense data:', expenseData);
-
                     const expenseToInsert = {
                         user_id: this.user.id,
                         name: expenseData.name,
@@ -896,57 +854,22 @@
 
                     if (error) throw error;
 
-                    console.log('Expense created:', data);
+                    // If shared with someone, create bill shares for ALL participants including creator
+                    if (expenseData.shared_with && expenseData.splits) {
+                        const shares = Object.entries(expenseData.splits).map(([userId, amount]) => ({
+                            bill_id: data.id,
+                            user_id: userId,
+                            amount: amount,
+                            paid: false
+                        }));
 
-                    // FIXED: Create bill shares for ALL participants including creator
-                    if (expenseData.shared_with && expenseData.shared_with.length > 0 && expenseData.splits) {
-                        console.log('Creating bill shares for shared expense...');
-                        console.log('Shared with:', expenseData.shared_with);
-                        console.log('Splits:', expenseData.splits);
+                        const { error: sharesError } = await supabase
+                            .from('bill_shares')
+                            .insert(shares);
 
-                        // CRITICAL FIX: Ensure ALL participants (including creator) get bill_shares
-                        const allParticipants = [this.user.id, ...expenseData.shared_with];
-                        console.log('All participants:', allParticipants);
-
-                        const shares = [];
-                        
-                        // Create shares for each participant
-                        allParticipants.forEach(userId => {
-                            const amount = expenseData.splits[userId];
-                            if (amount && amount > 0) {
-                                shares.push({
-                                    bill_id: data.id,
-                                    user_id: userId,
-                                    amount: amount,
-                                    paid: false
-                                });
-                            } else {
-                                console.warn(`Warning: No split amount found for user ${userId}`);
-                            }
-                        });
-
-                        console.log('Creating bill_shares:', shares);
-
-                        if (shares.length > 0) {
-                            const { error: sharesError } = await supabase
-                                .from('bill_shares')
-                                .insert(shares);
-
-                            if (sharesError) {
-                                console.error('Error creating bill shares:', sharesError);
-                                throw sharesError;
-                            }
-
-                            console.log(`✅ Created ${shares.length} bill shares successfully`);
-                        } else {
-                            console.error('❌ No valid bill shares to create');
-                            throw new Error('Failed to create bill shares - no valid splits found');
-                        }
-                    } else {
-                        console.log('Non-shared expense created - no bill shares needed');
+                        if (sharesError) throw sharesError;
                     }
 
-                    console.log('=== Expense Creation Complete ===\n');
                     return data;
                 } catch (error) {
                     console.error('Add expense error:', error);
@@ -954,11 +877,9 @@
                 }
             }
 
-            // FIXED: Enhanced getUserBills with better error handling and validation
+            // FIXED: Enhanced getUserBills to get split details and other participants
             async getUserBills() {
                 try {
-                    console.log('\n=== Fetching User Bills ===');
-                    
                     // Get bills owned by user (excluding expenses and completed bills)
                     const { data: ownedBills, error: ownedError } = await supabase
                         .from('bills')
@@ -968,28 +889,19 @@
                         .eq('paid', false)
                         .order('due_date', { ascending: true });
 
-                    if (ownedError) {
-                        console.error('Error fetching owned bills:', ownedError);
-                        throw ownedError;
-                    }
+                    if (ownedError) throw ownedError;
 
-                    // FIXED: Get bills shared with user where the user hasn't paid their share
+                    // Get bills shared with user (excluding expenses and completed bills)
                     const { data: sharedBills, error: sharedError } = await supabase
                         .from('bill_shares')
                         .select('*, bills!inner(*, bill_shares(*))')
                         .eq('user_id', this.user.id)
                         .neq('bills.category', 'expense')
-                        .eq('bills.paid', false)
-                        .eq('paid', false); // CRITICAL FIX: Only get bills where user hasn't paid their share
+                        .eq('bills.paid', false);
 
-                    if (sharedError) {
-                        console.error('Error fetching shared bills:', sharedError);
-                        throw sharedError;
-                    }
+                    if (sharedError) throw sharedError;
 
-                    console.log(`Found ${ownedBills?.length || 0} owned bills and ${sharedBills?.length || 0} shared bills`);
-
-                    // Combine and process bills
+                    // Get user profiles for all participants
                     const allBills = [...(ownedBills || [])];
                     
                     // Add shared bills (avoiding duplicates)
@@ -1005,9 +917,9 @@
                         }
                     });
 
-                    // Enhance bills with participant details and fix shared status
+                    // Enhance bills with participant details
                     const enhancedBills = await Promise.all(allBills.map(async (bill) => {
-                        // FIXED: Properly detect shared bills for creators
+                        // FIXED: Check if bill is shared for the creator
                         if (bill.user_id === this.user.id && bill.bill_shares && bill.bill_shares.length > 0) {
                             bill.is_shared = true;
                             // Set user's share amount for the creator
@@ -1016,8 +928,6 @@
                                 bill.user_share = creatorShare.amount;
                                 bill.user_paid = creatorShare.paid;
                                 bill.share_id = creatorShare.id;
-                                
-                                console.log(`Creator bill ${bill.id}: share amount $${creatorShare.amount}, paid: ${creatorShare.paid}`);
                             }
                         }
                         
@@ -1035,7 +945,6 @@
                         return bill;
                     }));
 
-                    console.log(`=== Returning ${enhancedBills.length} total bills ===\n`);
                     return enhancedBills;
                 } catch (error) {
                     console.error('Get user bills error:', error);
@@ -1163,15 +1072,11 @@
                 }
             }
 
-            // FIXED: Enhanced payment marking with better validation
+            // FIXED: Improved payment logic
             async markBillPaid(billId, isShared = false, shareId = null) {
                 try {
-                    console.log(`\n=== Marking Bill Payment ===`);
-                    console.log('Payment details:', { billId, isShared, shareId, userId: this.user.id });
-
                     if (isShared && shareId) {
-                        // Mark specific share as paid using shareId
-                        console.log('Updating specific share by ID:', shareId);
+                        // Mark user's share as paid
                         const { error } = await supabase
                             .from('bill_shares')
                             .update({
@@ -1182,25 +1087,7 @@
 
                         if (error) throw error;
                     } else if (isShared) {
-                        // Mark user's share as paid by finding it
-                        console.log('Finding and updating user share for bill:', billId);
-                        const { data: existingShare, error: findError } = await supabase
-                            .from('bill_shares')
-                            .select('*')
-                            .eq('bill_id', billId)
-                            .eq('user_id', this.user.id)
-                            .single();
-
-                        if (findError) {
-                            console.error('Error finding user share:', findError);
-                            throw findError;
-                        }
-
-                        if (existingShare.paid) {
-                            console.log('⚠️ Share already marked as paid');
-                            return true;
-                        }
-
+                        // Mark user's share as paid (find their share)
                         const { error } = await supabase
                             .from('bill_shares')
                             .update({
@@ -1213,7 +1100,6 @@
                         if (error) throw error;
                     } else {
                         // Mark creator's portion as paid for non-shared bills
-                        console.log('Marking creator payment for non-shared bill');
                         const { error } = await supabase
                             .from('bills')
                             .update({
@@ -1226,12 +1112,9 @@
                         if (error) throw error;
                     }
 
-                    console.log('✅ Payment marked successfully');
-
                     // Check if bill is fully paid and mark as complete
-                    const isComplete = await this.checkAndCompleteBill(billId);
-                    
-                    console.log(`=== End Payment Marking ===\n`);
+                    await this.checkAndCompleteBill(billId);
+
                     return true;
                 } catch (error) {
                     console.error('Mark bill paid error:', error);
@@ -1242,78 +1125,26 @@
             // FIXED: Improved bill completion logic
             async checkAndCompleteBill(billId) {
                 try {
-                    // Get bill and all its shares with detailed logging
+                    // Get bill and all its shares
                     const { data: bill, error: billError } = await supabase
                         .from('bills')
                         .select('*, bill_shares(*)')
                         .eq('id', billId)
                         .single();
 
-                    if (billError) {
-                        console.error('Error fetching bill:', billError);
-                        throw billError;
-                    }
+                    if (billError) throw billError;
 
                     let isFullyPaid = false;
-
-                    // Enhanced logging for debugging
-                    console.log(`\n=== Checking Bill Completion for Bill ID: ${billId} ===`);
-                    console.log('Bill details:', {
-                        id: bill.id,
-                        name: bill.name,
-                        amount: bill.amount,
-                        user_id: bill.user_id,
-                        creator_paid: bill.creator_paid,
-                        paid: bill.paid,
-                        shares_count: bill.bill_shares.length
-                    });
 
                     if (bill.bill_shares.length === 0) {
                         // Non-shared bill - only check creator_paid
                         isFullyPaid = bill.creator_paid;
-                        console.log('Non-shared bill - Creator paid:', bill.creator_paid);
                     } else {
-                        // FIXED: More robust checking for shared bills
-                        console.log('Shared bill - Checking all shares:');
-                        
-                        // Log each share's status
-                        bill.bill_shares.forEach((share, index) => {
-                            console.log(`  Share ${index + 1}: User ${share.user_id}, Amount: $${share.amount}, Paid: ${share.paid}`);
-                        });
-
-                        // Count paid vs unpaid shares
-                        const paidShares = bill.bill_shares.filter(share => share.paid);
-                        const unpaidShares = bill.bill_shares.filter(share => !share.paid);
-                        
-                        console.log(`Paid shares: ${paidShares.length}/${bill.bill_shares.length}`);
-                        console.log('Unpaid users:', unpaidShares.map(s => s.user_id));
-
-                        // FIXED: All shares must be paid for completion
-                        isFullyPaid = bill.bill_shares.length > 0 && bill.bill_shares.every(share => share.paid === true);
-                        
-                        // Additional validation - ensure we have the expected number of shares
-                        const expectedParticipants = (bill.shared_with?.length || 0) + 1; // +1 for creator
-                        if (bill.bill_shares.length !== expectedParticipants) {
-                            console.warn(`Warning: Expected ${expectedParticipants} shares but found ${bill.bill_shares.length}`);
-                        }
+                        // Shared bill - all shares must be paid
+                        isFullyPaid = bill.bill_shares.every(share => share.paid);
                     }
 
-                    console.log(`Bill fully paid: ${isFullyPaid}`);
-
                     if (isFullyPaid) {
-                        console.log(`✅ Marking bill ${billId} as complete`);
-                        
-                        // FIXED: Double-check before marking as complete
-                        const finalCheck = await supabase
-                            .from('bill_shares')
-                            .select('paid')
-                            .eq('bill_id', billId);
-                            
-                        if (finalCheck.data && finalCheck.data.some(share => !share.paid)) {
-                            console.error('❌ PREVENTED PREMATURE COMPLETION: Some shares still unpaid');
-                            return false;
-                        }
-                        
                         // Mark entire bill as complete
                         const { error } = await supabase
                             .from('bills')
@@ -1323,26 +1154,15 @@
                             })
                             .eq('id', billId);
 
-                        if (error) {
-                            console.error('Error marking bill as paid:', error);
-                            throw error;
-                        }
-
-                        console.log(`✅ Bill ${billId} successfully marked as complete`);
+                        if (error) throw error;
 
                         // Handle recurring bills
                         if (bill.recurring && bill.recurrence_interval) {
                             await this.createNextRecurringBill(bill);
                         }
-                    } else {
-                        console.log(`⏳ Bill ${billId} not yet complete - waiting for more payments`);
                     }
-
-                    console.log(`=== End Bill Completion Check ===\n`);
-                    return isFullyPaid;
                 } catch (error) {
                     console.error('Check and complete bill error:', error);
-                    throw error;
                 }
             }
 
@@ -1805,28 +1625,23 @@
                                 recurrence_interval: data.recurring === 'true' ? data.recurrenceInterval : null
                             };
 
-                            // Handle shared bills (replace existing logic)
-                            const selectedConnections = Array.from(document.querySelectorAll('.connection-checkbox:checked')).map(cb => cb.value);
-                            if (selectedConnections.length > 0) {
-                                billData.shared_with = selectedConnections;
+                            // Handle shared bills
+                            if (data.shareWith && data.shareWith !== '') {
+                                billData.shared_with = [data.shareWith];
                                 billData.splits = {};
                                 
-                                const participants = [this.currentUser.id, ...selectedConnections];
-                                
                                 if (data.splitType === 'equal') {
-                                    const equalAmount = billData.amount / participants.length;
-                                    participants.forEach(userId => {
-                                        billData.splits[userId] = equalAmount;
-                                    });
-                                } else if (data.splitType === 'percentage') {
-                                    participants.forEach(userId => {
-                                        const percentage = parseFloat(data['percentage_' + userId]) || 0;
-                                        billData.splits[userId] = (billData.amount * percentage / 100);
-                                    });
+                                    billData.splits[this.currentUser.id] = billData.amount / 2;
+                                    billData.splits[data.shareWith] = billData.amount / 2;
                                 } else if (data.splitType === 'custom') {
-                                    participants.forEach(userId => {
-                                        billData.splits[userId] = parseFloat(data['custom_' + userId]) || 0;
-                                    });
+                                    const userAmount = parseFloat(data.userAmount) || 0;
+                                    billData.splits[this.currentUser.id] = userAmount;
+                                    billData.splits[data.shareWith] = billData.amount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
+                                    billData.splits[this.currentUser.id] = (billData.amount * userPercentage / 100);
+                                    billData.splits[data.shareWith] = (billData.amount * otherPercentage / 100);
                                 }
                             }
                             
@@ -1847,28 +1662,23 @@
                                 items: this.receiptItems.filter(item => item.name && item.amount > 0)
                             };
 
-                            // Handle shared expenses (UPDATED for multi-person)
-                            const selectedExpenseConnections = Array.from(document.querySelectorAll('.connection-checkbox:checked')).map(cb => cb.value);
-                            if (selectedExpenseConnections.length > 0) {
-                                expenseData.shared_with = selectedExpenseConnections;
+                            // Handle shared expenses
+                            if (data.shareWith && data.shareWith !== '') {
+                                expenseData.shared_with = [data.shareWith];
                                 expenseData.splits = {};
                                 
-                                const expenseParticipants = [this.currentUser.id, ...selectedExpenseConnections];
-                                
                                 if (data.splitType === 'equal') {
-                                    const equalAmount = expenseData.totalAmount / expenseParticipants.length;
-                                    expenseParticipants.forEach(userId => {
-                                        expenseData.splits[userId] = equalAmount;
-                                    });
-                                } else if (data.splitType === 'percentage') {
-                                    expenseParticipants.forEach(userId => {
-                                        const percentage = parseFloat(data['percentage_' + userId]) || 0;
-                                        expenseData.splits[userId] = (expenseData.totalAmount * percentage / 100);
-                                    });
+                                    expenseData.splits[this.currentUser.id] = expenseData.totalAmount / 2;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount / 2;
                                 } else if (data.splitType === 'custom') {
-                                    expenseParticipants.forEach(userId => {
-                                        expenseData.splits[userId] = parseFloat(data['custom_' + userId]) || 0;
-                                    });
+                                    const userAmount = parseFloat(data.userAmount) || 0;
+                                    expenseData.splits[this.currentUser.id] = userAmount;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
+                                    expenseData.splits[this.currentUser.id] = (expenseData.totalAmount * userPercentage / 100);
+                                    expenseData.splits[data.shareWith] = (expenseData.totalAmount * otherPercentage / 100);
                                 }
                             }
 
@@ -2116,25 +1926,15 @@
                 if (connections.length > 0) {
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
                         '<h4 class="font-medium mb-2">Share this bill?</h4>' +
-                        '<div class="mb-3">' +
-                        '<label class="block text-sm font-medium mb-2">Select people to share with:</label>' +
-                        '<div class="space-y-2 max-h-32 overflow-y-auto border rounded p-2 bg-white">';
-                    
-                    for (const conn of connections) {
-                        sharingSection += '<label class="flex items-center space-x-2">' +
-                            '<input type="checkbox" name="shareWith" value="' + conn.id + '" class="connection-checkbox">' +
-                            '<span class="text-sm">' + conn.name + '</span>' +
-                            '</label>';
-                    }
-                    
-                    sharingSection += '</div>' +
-                        '</div>' +
+                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        connectionOptions +
+                        '</select>' +
                         '<div id="split-options" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
@@ -2146,12 +1946,18 @@
                         '</label>' +
                         '</div>' +
                         '<div id="percentage-split" style="display:none;">' +
-                        '<div id="percentage-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: <span id="percentage-total">0</span>%</div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
                         '</div>' +
                         '<div id="custom-split" style="display:none;">' +
-                        '<div id="custom-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: $<span id="custom-total">0.00</span></div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
+                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
                         '</div>' +
                         '</div>';
@@ -2191,25 +1997,15 @@
                 if (connections.length > 0) {
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
                         '<h4 class="font-medium mb-2">Share this expense?</h4>' +
-                        '<div class="mb-3">' +
-                        '<label class="block text-sm font-medium mb-2">Select people to share with:</label>' +
-                        '<div class="space-y-2 max-h-32 overflow-y-auto border rounded p-2 bg-white">';
-                    
-                    for (const conn of connections) {
-                        sharingSection += '<label class="flex items-center space-x-2">' +
-                            '<input type="checkbox" name="shareWith" value="' + conn.id + '" class="connection-checkbox">' +
-                            '<span class="text-sm">' + conn.name + '</span>' +
-                            '</label>';
-                    }
-                    
-                    sharingSection += '</div>' +
-                        '</div>' +
+                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        connectionOptions +
+                        '</select>' +
                         '<div id="split-options" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
                         '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
@@ -2221,12 +2017,18 @@
                         '</label>' +
                         '</div>' +
                         '<div id="percentage-split" style="display:none;">' +
-                        '<div id="percentage-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: <span id="percentage-total">0</span>%</div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
                         '</div>' +
                         '<div id="custom-split" style="display:none;">' +
-                        '<div id="custom-inputs"></div>' +
-                        '<div class="text-xs text-gray-500 mt-1">Total: $<span id="custom-total">0.00</span></div>' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
+                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
                         '</div>' +
                         '</div>';
@@ -3032,112 +2834,7 @@
             }
         }
 
-        // Updated helper function for multi-person splitting
-        function toggleSplitType(value) {
-            const splitOptions = document.getElementById('split-options');
-            const checkboxes = document.querySelectorAll('.connection-checkbox:checked');
-            
-            if (splitOptions) {
-                if (checkboxes.length > 0) {
-                    splitOptions.style.display = 'block';
-                    updateSplitInputs();
-                } else {
-                    splitOptions.style.display = 'none';
-                }
-            }
-        }
-
-        function updateSplitInputs() {
-            const checkboxes = document.querySelectorAll('.connection-checkbox:checked');
-            const splitType = document.querySelector('input[name="splitType"]:checked')?.value;
-            const billAmount = parseFloat(document.querySelector('input[name="amount"]')?.value || document.querySelector('input[name="totalAmount"]')?.value || 0);
-            
-            if (checkboxes.length === 0) return;
-            
-            const participants = [
-                { id: window.app.currentUser.id, name: 'You' }
-            ];
-            
-            checkboxes.forEach(checkbox => {
-                const connectionName = checkbox.parentElement.querySelector('span').textContent;
-                participants.push({ id: checkbox.value, name: connectionName });
-            });
-            
-            updatePercentageInputs(participants, billAmount);
-            updateCustomInputs(participants, billAmount);
-        }
-
-        function updatePercentageInputs(participants, totalAmount) {
-            const container = document.getElementById('percentage-inputs');
-            if (!container) return;
-            
-            const equalPercentage = Math.round(100 / participants.length);
-            let html = '';
-            
-            participants.forEach((participant, index) => {
-                const percentage = index === participants.length - 1 ? 
-                    100 - (equalPercentage * (participants.length - 1)) : equalPercentage;
-                
-                html += '<div class="flex items-center space-x-2 mb-2">' +
-                    '<label class="text-sm w-20">' + participant.name + ':</label>' +
-                    '<input type="number" name="percentage_' + participant.id + '" value="' + percentage + '" ' +
-                    'min="0" max="100" step="1" class="form-input flex-1 percentage-input" ' +
-                    'onchange="updatePercentageTotal()">' +
-                    '<span class="text-sm">%</span>' +
-                    '</div>';
-            });
-            
-            container.innerHTML = html;
-            updatePercentageTotal();
-        }
-
-        function updateCustomInputs(participants, totalAmount) {
-            const container = document.getElementById('custom-inputs');
-            if (!container) return;
-            
-            const equalAmount = (totalAmount / participants.length).toFixed(2);
-            let html = '';
-            
-            participants.forEach(participant => {
-                html += '<div class="flex items-center space-x-2 mb-2">' +
-                    '<label class="text-sm w-20">' + participant.name + ':</label>' +
-                    '<input type="number" name="custom_' + participant.id + '" value="' + equalAmount + '" ' +
-                    'min="0" step="0.01" class="form-input flex-1 custom-input" ' +
-                    'onchange="updateCustomTotal()">' +
-                    '</div>';
-            });
-            
-            container.innerHTML = html;
-            updateCustomTotal();
-        }
-
-        function updatePercentageTotal() {
-            const inputs = document.querySelectorAll('.percentage-input');
-            let total = 0;
-            inputs.forEach(input => {
-                total += parseFloat(input.value) || 0;
-            });
-            const totalSpan = document.getElementById('percentage-total');
-            if (totalSpan) {
-                totalSpan.textContent = total;
-                totalSpan.style.color = total === 100 ? '#059669' : '#dc2626';
-            }
-        }
-
-        function updateCustomTotal() {
-            const inputs = document.querySelectorAll('.custom-input');
-            let total = 0;
-            inputs.forEach(input => {
-                total += parseFloat(input.value) || 0;
-            });
-            const totalSpan = document.getElementById('custom-total');
-            if (totalSpan) {
-                totalSpan.textContent = total.toFixed(2);
-                const expectedTotal = parseFloat(document.querySelector('input[name="amount"]')?.value || document.querySelector('input[name="totalAmount"]')?.value || 0);
-                totalSpan.style.color = Math.abs(total - expectedTotal) < 0.01 ? '#059669' : '#dc2626';
-            }
-        }
-
+        // Helper functions for dynamic UI
         function toggleSplitType(shareWithValue) {
             const splitOptions = document.getElementById('split-options');
             if (splitOptions) {
@@ -3164,16 +2861,9 @@
         window.toggleSplitType = toggleSplitType;
         window.toggleRecurrenceOptions = toggleRecurrenceOptions;
         window.updatePercentageOther = updatePercentageOther;
-        window.updateSplitInputs = updateSplitInputs;
-        window.updatePercentageTotal = updatePercentageTotal;
-        window.updateCustomTotal = updateCustomTotal;
 
-        // Handle connection checkbox changes
+        // Handle custom split radio change
         document.addEventListener('change', (e) => {
-            if (e.target.classList.contains('connection-checkbox')) {
-                toggleSplitType();
-            }
-            
             if (e.target.name === 'splitType') {
                 const customSplit = document.getElementById('custom-split');
                 const percentageSplit = document.getElementById('percentage-split');
@@ -3182,11 +2872,6 @@
                     customSplit.style.display = e.target.value === 'custom' ? 'block' : 'none';
                     percentageSplit.style.display = e.target.value === 'percentage' ? 'block' : 'none';
                 }
-            }
-            
-            if (e.target.name === 'amount' || e.target.name === 'totalAmount') {
-                // Update split inputs when amount changes
-                setTimeout(updateSplitInputs, 100);
             }
         });
 
