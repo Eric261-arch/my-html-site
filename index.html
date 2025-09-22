@@ -790,9 +790,12 @@
                 }
             }
 
-            // Enhanced Bill/Expense methods
+            // FIXED: Enhanced addBill function to properly create bill shares for all participants
             async addBill(billData) {
                 try {
+                    console.log('\n=== Creating Bill ===');
+                    console.log('Bill data:', billData);
+
                     const billToInsert = {
                         ...billData,
                         user_id: this.user.id,
@@ -808,22 +811,57 @@
 
                     if (error) throw error;
 
-                    // If shared with someone, create bill shares for ALL participants including creator
-                    if (billData.shared_with && billData.splits) {
-                        const shares = Object.entries(billData.splits).map(([userId, amount]) => ({
-                            bill_id: data.id,
-                            user_id: userId,
-                            amount: amount,
-                            paid: false
-                        }));
+                    console.log('Bill created:', data);
 
-                        const { error: sharesError } = await supabase
-                            .from('bill_shares')
-                            .insert(shares);
+                    // FIXED: Create bill shares for ALL participants including creator
+                    if (billData.shared_with && billData.shared_with.length > 0 && billData.splits) {
+                        console.log('Creating bill shares for shared bill...');
+                        console.log('Shared with:', billData.shared_with);
+                        console.log('Splits:', billData.splits);
 
-                        if (sharesError) throw sharesError;
+                        // CRITICAL FIX: Ensure ALL participants (including creator) get bill_shares
+                        const allParticipants = [this.user.id, ...billData.shared_with];
+                        console.log('All participants:', allParticipants);
+
+                        const shares = [];
+                        
+                        // Create shares for each participant
+                        allParticipants.forEach(userId => {
+                            const amount = billData.splits[userId];
+                            if (amount && amount > 0) {
+                                shares.push({
+                                    bill_id: data.id,
+                                    user_id: userId,
+                                    amount: amount,
+                                    paid: false
+                                });
+                            } else {
+                                console.warn(`Warning: No split amount found for user ${userId}`);
+                            }
+                        });
+
+                        console.log('Creating bill_shares:', shares);
+
+                        if (shares.length > 0) {
+                            const { error: sharesError } = await supabase
+                                .from('bill_shares')
+                                .insert(shares);
+
+                            if (sharesError) {
+                                console.error('Error creating bill shares:', sharesError);
+                                throw sharesError;
+                            }
+
+                            console.log(`✅ Created ${shares.length} bill shares successfully`);
+                        } else {
+                            console.error('❌ No valid bill shares to create');
+                            throw new Error('Failed to create bill shares - no valid splits found');
+                        }
+                    } else {
+                        console.log('Non-shared bill created - no bill shares needed');
                     }
 
+                    console.log('=== Bill Creation Complete ===\n');
                     return data;
                 } catch (error) {
                     console.error('Add bill error:', error);
@@ -831,8 +869,12 @@
                 }
             }
 
+            // FIXED: Enhanced addExpense function to properly create bill shares for all participants
             async addExpense(expenseData) {
                 try {
+                    console.log('\n=== Creating Expense ===');
+                    console.log('Expense data:', expenseData);
+
                     const expenseToInsert = {
                         user_id: this.user.id,
                         name: expenseData.name,
@@ -854,22 +896,57 @@
 
                     if (error) throw error;
 
-                    // If shared with someone, create bill shares for ALL participants including creator
-                    if (expenseData.shared_with && expenseData.splits) {
-                        const shares = Object.entries(expenseData.splits).map(([userId, amount]) => ({
-                            bill_id: data.id,
-                            user_id: userId,
-                            amount: amount,
-                            paid: false
-                        }));
+                    console.log('Expense created:', data);
 
-                        const { error: sharesError } = await supabase
-                            .from('bill_shares')
-                            .insert(shares);
+                    // FIXED: Create bill shares for ALL participants including creator
+                    if (expenseData.shared_with && expenseData.shared_with.length > 0 && expenseData.splits) {
+                        console.log('Creating bill shares for shared expense...');
+                        console.log('Shared with:', expenseData.shared_with);
+                        console.log('Splits:', expenseData.splits);
 
-                        if (sharesError) throw sharesError;
+                        // CRITICAL FIX: Ensure ALL participants (including creator) get bill_shares
+                        const allParticipants = [this.user.id, ...expenseData.shared_with];
+                        console.log('All participants:', allParticipants);
+
+                        const shares = [];
+                        
+                        // Create shares for each participant
+                        allParticipants.forEach(userId => {
+                            const amount = expenseData.splits[userId];
+                            if (amount && amount > 0) {
+                                shares.push({
+                                    bill_id: data.id,
+                                    user_id: userId,
+                                    amount: amount,
+                                    paid: false
+                                });
+                            } else {
+                                console.warn(`Warning: No split amount found for user ${userId}`);
+                            }
+                        });
+
+                        console.log('Creating bill_shares:', shares);
+
+                        if (shares.length > 0) {
+                            const { error: sharesError } = await supabase
+                                .from('bill_shares')
+                                .insert(shares);
+
+                            if (sharesError) {
+                                console.error('Error creating bill shares:', sharesError);
+                                throw sharesError;
+                            }
+
+                            console.log(`✅ Created ${shares.length} bill shares successfully`);
+                        } else {
+                            console.error('❌ No valid bill shares to create');
+                            throw new Error('Failed to create bill shares - no valid splits found');
+                        }
+                    } else {
+                        console.log('Non-shared expense created - no bill shares needed');
                     }
 
+                    console.log('=== Expense Creation Complete ===\n');
                     return data;
                 } catch (error) {
                     console.error('Add expense error:', error);
