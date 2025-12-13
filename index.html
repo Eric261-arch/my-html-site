@@ -2111,7 +2111,40 @@
                         return this.buildNotificationSettingsModal();
                         
                     case 'connections':
+                        const userConnections = await storage.getUserConnections();
+                        
+                        let connectionsList = '';
+                        if (userConnections.length > 0) {
+                            userConnections.forEach(connection => {
+                                connectionsList += 
+                                    '<div class="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 mb-2">' +
+                                    '<div class="flex items-center space-x-3">' +
+                                    '<div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">' +
+                                    '<svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
+                                    '</svg>' +
+                                    '</div>' +
+                                    '<div>' +
+                                    '<p class="font-medium">' + connection.name + '</p>' +
+                                    '<p class="text-xs text-gray-500">' + connection.email + '</p>' +
+                                    '</div>' +
+                                    '</div>' +
+                                    '<button data-action="remove-connection" data-connection-id="' + connection.id + '" class="btn p-2 text-red-600 hover:text-red-800" title="Remove Partner">' +
+                                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
+                                    '</svg>' +
+                                    '</button>' +
+                                    '</div>';
+                            });
+                        } else {
+                            connectionsList = '<div class="text-center py-4 text-gray-500 text-sm">No partners connected yet</div>';
+                        }
+                        
                         return '<h3 class="text-xl font-bold mb-4">Manage Partners</h3>' +
+                            '<div class="mb-6 p-4 bg-gray-50 rounded-lg">' +
+                            '<h4 class="font-medium mb-3">Current Partners</h4>' +
+                            '<div class="space-y-2">' + connectionsList + '</div>' +
+                            '</div>' +
                             '<div class="mb-6 p-4 bg-blue-50 rounded-lg">' +
                             '<h4 class="font-medium mb-2">Invite Someone</h4>' +
                             '<p class="text-sm text-gray-600 mb-3">Generate an invite code to share bills.</p>' +
