@@ -2512,14 +2512,14 @@
 
             // UPDATED: Dashboard now includes Partners Connected section
             async renderDashboard(totals, notifications, connections) {
-                // Calculate unpaid amounts (only if service is available and user is logged in)
+                // Calculate unpaid amounts (only if user is logged in)
                 let totalUnpaid = 0;
                 let unpaidByPerson = {};
                 
-                if (this.service && this.service.user) {
+                if (this.currentUser) {
                     try {
-                        totalUnpaid = await this.service.getTotalUnpaidShared();
-                        unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                        totalUnpaid = await storage.getTotalUnpaidShared();
+                        unpaidByPerson = await storage.calculateUnpaidByPerson();
                     } catch (error) {
                         console.log('Could not fetch unpaid amounts:', error);
                     }
@@ -2788,14 +2788,14 @@
             async renderBillsTab(bills) {
 
 
-                // Calculate unpaid amounts by person (only if service is available)
+                // Calculate unpaid amounts by person (only if user is logged in)
 
 
                 let unpaidByPerson = {};
                 
-                if (this.service && this.service.user) {
+                if (this.currentUser) {
                     try {
-                        unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                        unpaidByPerson = await storage.calculateUnpaidByPerson();
                     } catch (error) {
                         console.log('Could not fetch unpaid amounts:', error);
                     }
@@ -2998,9 +2998,9 @@
 
                 let unpaidByPerson = {};
                 
-                if (this.service && this.service.user) {
+                if (this.currentUser) {
                     try {
-                        unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                        unpaidByPerson = await storage.calculateUnpaidByPerson();
                     } catch (error) {
                         console.log('Could not fetch unpaid amounts:', error);
                     }
