@@ -2504,7 +2504,11 @@
             }
 
             // UPDATED: Dashboard now includes Partners Connected section
-            renderDashboard(totals, notifications, connections) {
+            async renderDashboard(totals, notifications, connections) {
+                // Calculate unpaid amounts
+                const totalUnpaid = await this.service.getTotalUnpaidShared();
+                const unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                
                 const incomeBlurClass = this.privateMode ? 'filter blur-sm' : '';
                 const remainingBlurClass = this.privateMode ? 'filter blur-sm' : '';
                 const remainingColorClass = totals.remaining >= 0 ? 'text-green-600' : 'text-red-600';
@@ -2549,7 +2553,39 @@
                         '</div>';
                 }
 
-                // ADDED: Partners Connected section for dashboard
+                // ADDED: Money Owed to You card
+                let unpaidCard = '';
+                if (totalUnpaid > 0) {
+                    let personBreakdown = '';
+                    for (const [person, amounts] of Object.entries(unpaidByPerson)) {
+                        personBreakdown += 
+                            '<div class="flex justify-between items-center py-1">' +
+                            '<span class="text-sm text-gray-600">' + person + '</span>' +
+                            '<span class="text-sm font-semibold text-gray-800">$' + amounts.total.toFixed(2) + '</span>' +
+                            '</div>';
+                    }
+                    
+                    unpaidCard = 
+                        '<div class="card fade-in mb-6">' +
+                        '<div class="p-6 bg-gradient-to-r from-green-50 to-emerald-50">' +
+                        '<div class="flex items-center justify-between mb-4">' +
+                        '<div>' +
+                        '<h3 class="text-lg font-semibold text-gray-800">Money Owed to You</h3>' +
+                        '<p class="text-sm text-gray-600">Total from unpaid bills & expenses</p>' +
+                        '</div>' +
+                        '<svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
+                        '</svg>' +
+                        '</div>' +
+                        '<p class="text-4xl font-bold text-green-600 mb-4">$' + totalUnpaid.toFixed(2) + '</p>' +
+                        '<div class="border-t border-green-200 pt-3">' +
+                        personBreakdown +
+                        '</div>' +
+                        '</div>' +
+                        '</div>';
+                }
+
+                                // ADDED: Partners Connected section for dashboard
                 let partnersSection = '';
                 if (connections.length > 0) {
                     let partnersHTML = '';
@@ -2604,6 +2640,7 @@
                 
                 return '<div class="space-y-6 fade-in">' +
                     notificationsSection +
+                    unpaidCard +
                     partnersSection +
                     '<div class="grid-responsive">' +
                     '<div class="card card-mobile">' +
@@ -2718,7 +2755,7 @@
                     incomesContent = '<div class="space-y-3">' + incomesList + '</div>';
                 }
                 
-                return '<div class="card fade-in">' +
+                return unpaidSummary + '<div class="card fade-in">' +
                     '<div class="p-6 border-b flex justify-between items-center">' +
                     '<h2 class="text-xl font-bold">Income Sources</h2>' +
                     '<button data-action="show-modal" data-modal="income" class="btn btn-primary">' +
@@ -2732,7 +2769,106 @@
                     '</div>';
             }
 
-            renderBillsTab(bills) {
+            async renderBillsTab(bills) {
+
+
+                // Calculate unpaid amounts by person
+
+
+                const unpaidByPerson = await this.service.calculateUnpaidByPerson();
+
+
+                
+
+
+                // Build unpaid summary card
+
+
+                let unpaidSummary = '';
+
+
+                if (Object.keys(unpaidByPerson).length > 0) {
+
+
+                    let billsOwed = '';
+
+
+                    for (const [person, amounts] of Object.entries(unpaidByPerson)) {
+
+
+                        if (amounts.bills > 0) {
+
+
+                            billsOwed += 
+
+
+                                '<div class="flex justify-between items-center py-2 border-b border-blue-100">' +
+
+
+                                '<span class="text-blue-800 font-medium">' + person + '</span>' +
+
+
+                                '<span class="font-bold text-blue-900 text-lg">$' + amounts.bills.toFixed(2) + '</span>' +
+
+
+                                '</div>';
+
+
+                        }
+
+
+                    }
+
+
+                    
+
+
+                    if (billsOwed) {
+
+
+                        unpaidSummary = 
+
+
+                            '<div class="card fade-in mb-4">' +
+
+
+                            '<div class="p-4 bg-blue-50 border-l-4 border-blue-500">' +
+
+
+                            '<div class="flex items-center gap-2 mb-3">' +
+
+
+                            '<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+
+
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />' +
+
+
+                            '</svg>' +
+
+
+                            '<h3 class="font-bold text-blue-900">Unpaid Bills Summary</h3>' +
+
+
+                            '</div>' +
+
+
+                            billsOwed +
+
+
+                            '</div>' +
+
+
+                            '</div>';
+
+
+                    }
+
+
+                }
+
+
+                {
                 let billsContent = '';
                 
                 if (bills.length === 0) {
@@ -2817,7 +2953,7 @@
                     billsContent = '<div class="space-y-3">' + billsList + '</div>';
                 }
                 
-                return '<div class="card fade-in">' +
+                return unpaidSummary + '<div class="card fade-in">' +
                     '<div class="p-6 border-b flex justify-between items-center">' +
                     '<h2 class="text-xl font-bold">Bills & Payments</h2>' +
                     '<button data-action="show-modal" data-modal="bill" class="btn btn-primary">' +
@@ -2831,7 +2967,106 @@
                     '</div>';
             }
 
-            renderExpensesTab(expenses) {
+            async renderExpensesTab(expenses) {
+
+
+                // Calculate unpaid amounts by person
+
+
+                const unpaidByPerson = await this.service.calculateUnpaidByPerson();
+
+
+                
+
+
+                // Build unpaid summary card
+
+
+                let unpaidSummary = '';
+
+
+                if (Object.keys(unpaidByPerson).length > 0) {
+
+
+                    let expensesOwed = '';
+
+
+                    for (const [person, amounts] of Object.entries(unpaidByPerson)) {
+
+
+                        if (amounts.expenses > 0) {
+
+
+                            expensesOwed += 
+
+
+                                '<div class="flex justify-between items-center py-2 border-b border-orange-100">' +
+
+
+                                '<span class="text-orange-800 font-medium">' + person + '</span>' +
+
+
+                                '<span class="font-bold text-orange-900 text-lg">$' + amounts.expenses.toFixed(2) + '</span>' +
+
+
+                                '</div>';
+
+
+                        }
+
+
+                    }
+
+
+                    
+
+
+                    if (expensesOwed) {
+
+
+                        unpaidSummary = 
+
+
+                            '<div class="card fade-in mb-4">' +
+
+
+                            '<div class="p-4 bg-orange-50 border-l-4 border-orange-500">' +
+
+
+                            '<div class="flex items-center gap-2 mb-3">' +
+
+
+                            '<svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+
+
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />' +
+
+
+                            '</svg>' +
+
+
+                            '<h3 class="font-bold text-orange-900">Unpaid Expenses Summary</h3>' +
+
+
+                            '</div>' +
+
+
+                            expensesOwed +
+
+
+                            '</div>' +
+
+
+                            '</div>';
+
+
+                    }
+
+
+                }
+
+
+                {
                 let expensesContent = '';
                 
                 if (expenses.length === 0) {
@@ -2934,7 +3169,7 @@
                     expensesContent = '<div class="space-y-3">' + expensesList + '</div>';
                 }
                 
-                return '<div class="card fade-in">' +
+                return unpaidSummary + '<div class="card fade-in">' +
                     '<div class="p-6 border-b flex justify-between items-center">' +
                     '<h2 class="text-xl font-bold">Expenses</h2>' +
                     '<button data-action="show-modal" data-modal="expense" class="btn btn-primary">' +
@@ -3031,7 +3266,7 @@
                     historyContent = '<div class="space-y-3">' + historyList + '</div>';
                 }
                 
-                return '<div class="card fade-in">' +
+                return unpaidSummary + '<div class="card fade-in">' +
                     '<div class="p-6 border-b">' +
                     '<h2 class="text-xl font-bold">Payment History</h2>' +
                     '<p class="text-sm text-gray-600 mt-1">All completed bills and expenses</p>' +
