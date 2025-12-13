@@ -1368,11 +1368,16 @@
                             user_id_param: this.user.id
                         });
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error('SQL function error:', error);
+                        throw error;
+                    }
+
+                    console.log('calculateUnpaidByPerson SQL result:', data);
 
                     // Transform to object format for easier use
                     const unpaidByPerson = {};
-                    if (data) {
+                    if (data && data.length > 0) {
                         data.forEach(row => {
                             unpaidByPerson[row.person_name] = {
                                 total: parseFloat(row.total_unpaid),
@@ -1383,10 +1388,12 @@
                         });
                     }
 
+                    console.log('Transformed unpaidByPerson:', unpaidByPerson);
                     return unpaidByPerson;
                 } catch (error) {
                     console.error('Calculate unpaid by person error:', error);
                     // Fallback to client-side calculation
+                    console.log('Falling back to client-side calculation');
                     return await this.calculateUnpaidByPersonFallback();
                 }
             }
