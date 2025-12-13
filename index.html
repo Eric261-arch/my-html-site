@@ -877,6 +877,58 @@
                 }
             }
 
+            async updateExpense(expenseId, expenseData) {
+                try {
+                    const expenseToUpdate = {
+                        name: expenseData.name,
+                        amount: expenseData.totalAmount,
+                        due_date: expenseData.expenseDate,
+                        description: JSON.stringify(expenseData.items || []),
+                        shared_with: expenseData.shared_with || [],
+                        splits: expenseData.splits || {}
+                    };
+
+                    // Update the expense
+                    const { data, error } = await supabase
+                        .from('bills')
+                        .update(expenseToUpdate)
+                        .eq('id', expenseId)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    // Delete existing bill shares
+                    const { error: deleteError } = await supabase
+                        .from('bill_shares')
+                        .delete()
+                        .eq('bill_id', expenseId);
+
+                    if (deleteError) throw deleteError;
+
+                    // Recreate bill shares if expense is shared
+                    if (expenseData.shared_with && expenseData.splits) {
+                        const shares = Object.entries(expenseData.splits).map(([userId, amount]) => ({
+                            bill_id: expenseId,
+                            user_id: userId,
+                            amount: amount,
+                            paid: false
+                        }));
+
+                        const { error: sharesError } = await supabase
+                            .from('bill_shares')
+                            .insert(shares);
+
+                        if (sharesError) throw sharesError;
+                    }
+
+                    return data;
+                } catch (error) {
+                    console.error('Update expense error:', error);
+                    throw error;
+                }
+            }
+
             // FIXED: Enhanced getUserBills to get split details and other participants
             async getUserBills() {
                 try {
@@ -1914,6 +1966,7 @@
                             break;
 
                         case 'add-expense':
+                        case 'edit-expense':
                             const expenseData = {
                                 name: data.name,
                                 expenseDate: data.expenseDate,
@@ -1922,7 +1975,7 @@
                             };
 
                             // Handle shared expenses - now supports multiple people
-                            const expenseForm = document.querySelector('form[data-form="add-expense"]');
+                            const expenseForm = document.querySelector('form[data-form="add-expense"], form[data-form="edit-expense"]');
                             const selectedExpensePeople = expenseForm.querySelectorAll('input[name="shareWith[]"]:checked');
                             
                             if (selectedExpensePeople.length > 0) {
@@ -1973,7 +2026,11 @@
                                 }
                             }
 
-                            await storage.addExpense(expenseData);
+                            if (formType === 'edit-expense' && data.id) {
+                                await storage.updateExpense(data.id, expenseData);
+                            } else {
+                                await storage.addExpense(expenseData);
+                            }
                             this.receiptItems = [];
                             this.closeModal();
                             this.render();
@@ -2336,16 +2393,42 @@
                     '</form>';
             }
 
-            buildExpenseModal(connections) {
-                this.receiptItems = [{ name: '', amount: 0 }];
+            buildExpenseModal(connections, isEdit = false, item = null) {
+                const editTitle = isEdit ? 'Edit' : 'Add';
+                const formType = isEdit ? 'edit-expense' : 'add-expense';
+                const submitText = isEdit ? 'Update' : 'Add';
+                
+                // Pre-fill data if editing
+                const nameValue = item?.name || '';
+                const dateValue = item?.due_date ? item.due_date.split('T')[0] : '';
+                const hiddenInput = isEdit ? '<input type="hidden" name="id" value="' + item.id + '">' : '';
+                
+                // Parse existing receipt items if editing
+                if (isEdit && item) {
+                    try {
+                        if (item.description) {
+                            this.receiptItems = JSON.parse(item.description);
+                        } else {
+                            this.receiptItems = [{ name: '', amount: item.amount || 0 }];
+                        }
+                    } catch (e) {
+                        this.receiptItems = [{ name: '', amount: item.amount || 0 }];
+                    }
+                } else {
+                    this.receiptItems = [{ name: '', amount: 0 }];
+                }
+                
+                // Get shared_with array for pre-checking
+                const sharedWith = item?.shared_with || [];
                 
                 let sharingSection = '';
                 if (connections.length > 0) {
                     let connectionCheckboxes = '';
                     for (const conn of connections) {
+                        const isChecked = sharedWith.includes(conn.id) ? ' checked' : '';
                         connectionCheckboxes += 
                             '<label class="flex items-center p-2 hover:bg-blue-100 rounded cursor-pointer">' +
-                            '<input type="checkbox" name="shareWith[]" value="' + conn.id + '" class="mr-3 form-checkbox h-5 w-5 text-purple-600" onchange="window.updateExpenseSplitPreview()">' +
+                            '<input type="checkbox" name="shareWith[]" value="' + conn.id + '" class="mr-3 form-checkbox h-5 w-5 text-purple-600"' + isChecked + ' onchange="window.updateExpenseSplitPreview()">' +
                             '<div class="flex-1">' +
                             '<p class="font-medium">' + conn.name + '</p>' +
                             '<p class="text-xs text-gray-500">' + conn.email + '</p>' +
@@ -2441,11 +2524,12 @@
                         '</div>';
                 }
                 
-                return '<h3 class="text-xl font-bold mb-4">Add Expense</h3>' +
-                    '<form data-form="add-expense">' +
+                return '<h3 class="text-xl font-bold mb-4">' + editTitle + ' Expense</h3>' +
+                    '<form data-form="' + formType + '">' +
+                    hiddenInput +
                     '<div class="space-y-4">' +
-                    '<input type="text" name="name" placeholder="Expense Name" required class="form-input">' +
-                    '<input type="date" name="expenseDate" required class="form-input">' +
+                    '<input type="text" name="name" placeholder="Expense Name" required value="' + nameValue + '" class="form-input">' +
+                    '<input type="date" name="expenseDate" required value="' + dateValue + '" class="form-input">' +
                     '<div class="space-y-3">' +
                     '<div class="flex justify-between items-center">' +
                     '<h4 class="font-medium">Receipt Items</h4>' +
@@ -2457,7 +2541,7 @@
                     '</div>' +
                     sharingSection +
                     '<div class="grid grid-cols-2 gap-3">' +
-                    '<button type="submit" class="btn btn-primary">Add Expense</button>' +
+                    '<button type="submit" class="btn btn-primary">' + submitText + ' Expense</button>' +
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
                     '</div>' +
                     '</div>' +
