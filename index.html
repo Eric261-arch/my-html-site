@@ -1277,6 +1277,213 @@
                 }
             }
 
+            // Payment Verification Notification Methods
+            async createPaymentVerificationNotification(billId, payerUserId, receiverUserId, amount, billName) {
+                try {
+                    const { data, error } = await supabase
+                        .from('payment_verifications')
+                        .insert([{
+                            bill_id: billId,
+                            payer_user_id: payerUserId,
+                            receiver_user_id: receiverUserId,
+                            amount: amount,
+                            bill_name: billName,
+                            status: 'pending'
+                        }])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Create payment verification error:', error);
+                    throw error;
+                }
+            }
+
+            async getPendingPaymentVerifications() {
+                try {
+                    // Use the SQL function for better performance
+                    const { data, error } = await supabase
+                        .rpc('get_pending_verifications', {
+                            user_id_param: this.user.id
+                        });
+
+                    if (error) throw error;
+                    return data || [];
+                } catch (error) {
+                    console.error('Get pending verifications error:', error);
+                    return [];
+                }
+            }
+
+            async verifyPaymentReceived(verificationId, billId) {
+                try {
+                    // Mark verification as confirmed
+                    const { error: verifyError } = await supabase
+                        .from('payment_verifications')
+                        .update({
+                            status: 'confirmed',
+                            verified_at: new Date().toISOString()
+                        })
+                        .eq('id', verificationId);
+
+                    if (verifyError) throw verifyError;
+
+                    // Check if bill is fully paid after this verification
+                    await this.checkAndCompleteBill(billId);
+
+                    return true;
+                } catch (error) {
+                    console.error('Verify payment error:', error);
+                    throw error;
+                }
+            }
+
+            async rejectPaymentVerification(verificationId, reason = '') {
+                try {
+                    const { error } = await supabase
+                        .from('payment_verifications')
+                        .update({
+                            status: 'rejected',
+                            rejected_at: new Date().toISOString(),
+                            rejection_reason: reason
+                        })
+                        .eq('id', verificationId);
+
+                    if (error) throw error;
+                    return true;
+                } catch (error) {
+                    console.error('Reject payment error:', error);
+                    throw error;
+                }
+            }
+
+            // Calculate unpaid amounts per person using SQL function
+            async calculateUnpaidByPerson() {
+                try {
+                    // Use the SQL function for better performance
+                    const { data, error } = await supabase
+                        .rpc('calculate_unpaid_by_person', {
+                            user_id_param: this.user.id
+                        });
+
+                    if (error) throw error;
+
+                    // Transform to object format for easier use
+                    const unpaidByPerson = {};
+                    if (data) {
+                        data.forEach(row => {
+                            unpaidByPerson[row.person_name] = {
+                                total: parseFloat(row.total_unpaid),
+                                bills: parseFloat(row.bills_unpaid),
+                                expenses: parseFloat(row.expenses_unpaid),
+                                userId: row.person_id
+                            };
+                        });
+                    }
+
+                    return unpaidByPerson;
+                } catch (error) {
+                    console.error('Calculate unpaid by person error:', error);
+                    // Fallback to client-side calculation
+                    return await this.calculateUnpaidByPersonFallback();
+                }
+            }
+
+            // Fallback method for calculating unpaid amounts (client-side)
+            async calculateUnpaidByPersonFallback() {
+                try {
+                    const bills = await this.getUserBills();
+                    const expenses = await this.getUserExpenses();
+                    const allItems = [...bills, ...expenses];
+
+                    const unpaidByPerson = {};
+
+                    for (const item of allItems) {
+                        if (item.is_shared && item.bill_shares) {
+                            for (const share of item.bill_shares) {
+                                if (!share.paid && share.user_id !== this.user.id) {
+                                    // Get user details
+                                    const { data: user } = await supabase
+                                        .from('users')
+                                        .select('name')
+                                        .eq('id', share.user_id)
+                                        .single();
+
+                                    const userName = user?.name || 'Unknown';
+                                    
+                                    if (!unpaidByPerson[userName]) {
+                                        unpaidByPerson[userName] = {
+                                            total: 0,
+                                            bills: 0,
+                                            expenses: 0,
+                                            userId: share.user_id
+                                        };
+                                    }
+                                    
+                                    unpaidByPerson[userName].total += share.amount;
+                                    if (item.category === 'expense') {
+                                        unpaidByPerson[userName].expenses += share.amount;
+                                    } else {
+                                        unpaidByPerson[userName].bills += share.amount;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    return unpaidByPerson;
+                } catch (error) {
+                    console.error('Calculate unpaid by person fallback error:', error);
+                    return {};
+                }
+            }
+
+            // Get total unpaid shared amounts using SQL function
+            async getTotalUnpaidShared() {
+                try {
+                    // Use the SQL function for better performance
+                    const { data, error } = await supabase
+                        .rpc('get_total_unpaid_owed', {
+                            user_id_param: this.user.id
+                        });
+
+                    if (error) throw error;
+                    return parseFloat(data) || 0;
+                } catch (error) {
+                    console.error('Get total unpaid shared error:', error);
+                    // Fallback to client-side calculation
+                    return await this.getTotalUnpaidSharedFallback();
+                }
+            }
+
+            // Fallback method for getting total unpaid (client-side)
+            async getTotalUnpaidSharedFallback() {
+                try {
+                    const bills = await this.getUserBills();
+                    const expenses = await this.getUserExpenses();
+                    const allItems = [...bills, ...expenses];
+
+                    let totalUnpaid = 0;
+
+                    for (const item of allItems) {
+                        if (item.is_shared && item.bill_shares) {
+                            for (const share of item.bill_shares) {
+                                if (!share.paid && share.user_id !== this.user.id) {
+                                    totalUnpaid += share.amount;
+                                }
+                            }
+                        }
+                    }
+
+                    return totalUnpaid;
+                } catch (error) {
+                    console.error('Get total unpaid shared fallback error:', error);
+                    return 0;
+                }
+            }
+
             // Notification methods
             async getUpcomingBillNotifications() {
                 try {
@@ -2891,4 +3098,3 @@
     </script>
 </body>
 </html>
-
