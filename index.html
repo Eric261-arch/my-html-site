@@ -1914,15 +1914,15 @@
                             };
 
                             // Handle shared expenses - now supports multiple people
-                            const form = document.querySelector('form[data-form="add-expense"]');
-                            const selectedPeopleCheckboxes = form.querySelectorAll('input[name="shareWith[]"]:checked');
+                            const expenseForm = document.querySelector('form[data-form="add-expense"]');
+                            const selectedExpensePeople = expenseForm.querySelectorAll('input[name="shareWith[]"]:checked');
                             
-                            if (selectedPeopleCheckboxes.length > 0) {
-                                const selectedPeople = Array.from(selectedPeopleCheckboxes).map(cb => cb.value);
+                            if (selectedExpensePeople.length > 0) {
+                                const selectedPeople = Array.from(selectedExpensePeople).map(cb => cb.value);
                                 expenseData.shared_with = selectedPeople;
                                 expenseData.splits = {};
                                 
-                                const splitType = form.querySelector('input[name="splitType"]:checked')?.value || 'equal';
+                                const splitType = expenseForm.querySelector('input[name="splitType"]:checked')?.value || 'equal';
                                 const peopleCount = selectedPeople.length + 1; // +1 for creator
                                 
                                 if (splitType === 'equal') {
@@ -1936,7 +1936,7 @@
                                     expenseData.splits[this.currentUser.id] = userAmount;
                                     
                                     selectedPeople.forEach(personId => {
-                                        const amountInput = form.querySelector(`input[name="custom-${personId}"]`);
+                                        const amountInput = expenseForm.querySelector(`input[name="custom-${personId}"]`);
                                         const amount = parseFloat(amountInput?.value || 0);
                                         expenseData.splits[personId] = amount;
                                     });
@@ -1952,7 +1952,7 @@
                                     
                                     let totalPercentage = userPercentage;
                                     selectedPeople.forEach(personId => {
-                                        const percentInput = form.querySelector(`input[name="percentage-${personId}"]`);
+                                        const percentInput = expenseForm.querySelector(`input[name="percentage-${personId}"]`);
                                         const percent = parseFloat(percentInput?.value || 0);
                                         totalPercentage += percent;
                                         expenseData.splits[personId] = (expenseData.totalAmount * percent / 100);
