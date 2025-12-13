@@ -1738,6 +1738,11 @@
                 if (totalInput) {
                     totalInput.value = total.toFixed(2);
                 }
+                
+                // Update split preview when total changes
+                if (window.updateExpenseSplitPreview) {
+                    window.updateExpenseSplitPreview();
+                }
             }
 
             updateReceiptItem(index, field, value) {
@@ -1839,23 +1844,55 @@
                                 recurrence_interval: data.recurring === 'true' ? data.recurrenceInterval : null
                             };
 
-                            // Handle shared bills
-                            if (data.shareWith && data.shareWith !== '') {
-                                billData.shared_with = [data.shareWith];
+                            // Handle shared bills - now supports multiple people
+                            const billForm = document.querySelector('form[data-form="add-bill"], form[data-form="edit-bill"]');
+                            const selectedPeopleCheckboxes = billForm?.querySelectorAll('input[name="shareWith[]"]:checked');
+                            
+                            if (selectedPeopleCheckboxes && selectedPeopleCheckboxes.length > 0) {
+                                const selectedPeople = Array.from(selectedPeopleCheckboxes).map(cb => cb.value);
+                                billData.shared_with = selectedPeople;
                                 billData.splits = {};
                                 
-                                if (data.splitType === 'equal') {
-                                    billData.splits[this.currentUser.id] = billData.amount / 2;
-                                    billData.splits[data.shareWith] = billData.amount / 2;
-                                } else if (data.splitType === 'custom') {
+                                const splitType = billForm.querySelector('input[name="splitType"]:checked')?.value || 'equal';
+                                const peopleCount = selectedPeople.length + 1; // +1 for creator
+                                
+                                if (splitType === 'equal') {
+                                    const perPerson = billData.amount / peopleCount;
+                                    billData.splits[this.currentUser.id] = perPerson;
+                                    selectedPeople.forEach(personId => {
+                                        billData.splits[personId] = perPerson;
+                                    });
+                                } else if (splitType === 'custom') {
                                     const userAmount = parseFloat(data.userAmount) || 0;
                                     billData.splits[this.currentUser.id] = userAmount;
-                                    billData.splits[data.shareWith] = billData.amount - userAmount;
-                                } else if (data.splitType === 'percentage') {
-                                    const userPercentage = parseFloat(data.userPercentage) || 50;
-                                    const otherPercentage = 100 - userPercentage;
+                                    
+                                    selectedPeople.forEach(personId => {
+                                        const amountInput = billForm.querySelector(`input[name="custom-${personId}"]`);
+                                        const amount = parseFloat(amountInput?.value || 0);
+                                        billData.splits[personId] = amount;
+                                    });
+                                    
+                                    // Validate total
+                                    const splitTotal = Object.values(billData.splits).reduce((sum, amt) => sum + amt, 0);
+                                    if (Math.abs(splitTotal - billData.amount) >= 0.01) {
+                                        throw new Error('Custom amounts must equal the total bill amount');
+                                    }
+                                } else if (splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 0;
                                     billData.splits[this.currentUser.id] = (billData.amount * userPercentage / 100);
-                                    billData.splits[data.shareWith] = (billData.amount * otherPercentage / 100);
+                                    
+                                    let totalPercentage = userPercentage;
+                                    selectedPeople.forEach(personId => {
+                                        const percentInput = billForm.querySelector(`input[name="percentage-${personId}"]`);
+                                        const percent = parseFloat(percentInput?.value || 0);
+                                        totalPercentage += percent;
+                                        billData.splits[personId] = (billData.amount * percent / 100);
+                                    });
+                                    
+                                    // Validate percentage total
+                                    if (Math.abs(totalPercentage - 100) >= 0.01) {
+                                        throw new Error('Percentages must total 100%');
+                                    }
                                 }
                             }
                             
@@ -1876,23 +1913,55 @@
                                 items: this.receiptItems.filter(item => item.name && item.amount > 0)
                             };
 
-                            // Handle shared expenses
-                            if (data.shareWith && data.shareWith !== '') {
-                                expenseData.shared_with = [data.shareWith];
+                            // Handle shared expenses - now supports multiple people
+                            const form = document.querySelector('form[data-form="add-expense"]');
+                            const selectedPeopleCheckboxes = form.querySelectorAll('input[name="shareWith[]"]:checked');
+                            
+                            if (selectedPeopleCheckboxes.length > 0) {
+                                const selectedPeople = Array.from(selectedPeopleCheckboxes).map(cb => cb.value);
+                                expenseData.shared_with = selectedPeople;
                                 expenseData.splits = {};
                                 
-                                if (data.splitType === 'equal') {
-                                    expenseData.splits[this.currentUser.id] = expenseData.totalAmount / 2;
-                                    expenseData.splits[data.shareWith] = expenseData.totalAmount / 2;
-                                } else if (data.splitType === 'custom') {
+                                const splitType = form.querySelector('input[name="splitType"]:checked')?.value || 'equal';
+                                const peopleCount = selectedPeople.length + 1; // +1 for creator
+                                
+                                if (splitType === 'equal') {
+                                    const perPerson = expenseData.totalAmount / peopleCount;
+                                    expenseData.splits[this.currentUser.id] = perPerson;
+                                    selectedPeople.forEach(personId => {
+                                        expenseData.splits[personId] = perPerson;
+                                    });
+                                } else if (splitType === 'custom') {
                                     const userAmount = parseFloat(data.userAmount) || 0;
                                     expenseData.splits[this.currentUser.id] = userAmount;
-                                    expenseData.splits[data.shareWith] = expenseData.totalAmount - userAmount;
-                                } else if (data.splitType === 'percentage') {
-                                    const userPercentage = parseFloat(data.userPercentage) || 50;
-                                    const otherPercentage = 100 - userPercentage;
+                                    
+                                    selectedPeople.forEach(personId => {
+                                        const amountInput = form.querySelector(`input[name="custom-${personId}"]`);
+                                        const amount = parseFloat(amountInput?.value || 0);
+                                        expenseData.splits[personId] = amount;
+                                    });
+                                    
+                                    // Validate total
+                                    const splitTotal = Object.values(expenseData.splits).reduce((sum, amt) => sum + amt, 0);
+                                    if (Math.abs(splitTotal - expenseData.totalAmount) >= 0.01) {
+                                        throw new Error('Custom amounts must equal the total expense amount');
+                                    }
+                                } else if (splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 0;
                                     expenseData.splits[this.currentUser.id] = (expenseData.totalAmount * userPercentage / 100);
-                                    expenseData.splits[data.shareWith] = (expenseData.totalAmount * otherPercentage / 100);
+                                    
+                                    let totalPercentage = userPercentage;
+                                    selectedPeople.forEach(personId => {
+                                        const percentInput = form.querySelector(`input[name="percentage-${personId}"]`);
+                                        const percent = parseFloat(percentInput?.value || 0);
+                                        totalPercentage += percent;
+                                        expenseData.splits[personId] = (expenseData.totalAmount * percent / 100);
+                                    });
+                                    
+                                    // Validate percentage total
+                                    if (Math.abs(totalPercentage - 100) >= 0.01) {
+                                        throw new Error('Percentages must total 100%');
+                                    }
                                 }
                             }
 
@@ -2138,41 +2207,98 @@
                 
                 let sharingSection = '';
                 if (connections.length > 0) {
+                    let connectionCheckboxes = '';
+                    for (const conn of connections) {
+                        connectionCheckboxes += 
+                            '<label class="flex items-center p-2 hover:bg-blue-100 rounded cursor-pointer">' +
+                            '<input type="checkbox" name="shareWith[]" value="' + conn.id + '" class="mr-3 form-checkbox h-5 w-5 text-purple-600" onchange="window.updateBillSplitPreview()">' +
+                            '<div class="flex-1">' +
+                            '<p class="font-medium">' + conn.name + '</p>' +
+                            '<p class="text-xs text-gray-500">' + conn.email + '</p>' +
+                            '</div>' +
+                            '</label>';
+                    }
+                    
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
-                        '<h4 class="font-medium mb-2">Share this bill?</h4>' +
-                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
-                        connectionOptions +
-                        '</select>' +
-                        '<div id="split-options" style="display:none;">' +
+                        '<h4 class="font-medium mb-3">Share this bill?</h4>' +
+                        '<div class="space-y-1 mb-3 max-h-40 overflow-y-auto border border-blue-200 rounded p-2 bg-white" id="people-selection-bill">' +
+                        connectionCheckboxes +
+                        '</div>' +
+                        '<div id="split-options-bill" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally (50/50)</span>' +
+                        '<input type="radio" name="splitType" value="equal" checked class="mr-2" onchange="window.updateBillSplitPreview()">' +
+                        '<span class="text-sm">Split equally</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
+                        '<input type="radio" name="splitType" value="percentage" class="mr-2" onchange="window.updateBillSplitPreview()">' +
                         '<span class="text-sm">Split by percentage</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="custom" class="mr-2">' +
+                        '<input type="radio" name="splitType" value="custom" class="mr-2" onchange="window.updateBillSplitPreview()">' +
                         '<span class="text-sm">Custom amounts</span>' +
                         '</label>' +
                         '</div>' +
-                        '<div id="percentage-split" style="display:none;">' +
-                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
-                        '<div class="flex items-center space-x-2">' +
-                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        
+                        // Equal split preview
+                        '<div id="equal-split-preview-bill" class="p-3 bg-white rounded border border-blue-200">' +
+                        '<div class="text-sm text-gray-600 space-y-1">' +
+                        '<div class="flex justify-between"><span>You:</span><span id="equal-you-amount-bill">$0.00</span></div>' +
+                        '<div id="equal-others-list-bill"></div>' +
+                        '<div class="border-t pt-1 mt-1 font-medium flex justify-between">' +
+                        '<span>Per person:</span><span id="equal-per-person-bill">$0.00</span>' +
+                        '</div>' +
+                        '</div>' +
+                        '</div>' +
+                        
+                        // Percentage split inputs
+                        '<div id="percentage-split-bill" style="display:none;" class="space-y-2">' +
+                        '<div class="p-3 bg-white rounded border border-blue-200">' +
+                        '<div class="space-y-2" id="percentage-inputs-bill">' +
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">You:</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<input type="number" name="userPercentage" placeholder="0" min="0" max="100" step="0.01" value="" class="form-input w-20 text-sm" oninput="window.updateBillSplitPreview()">' +
                         '<span class="text-sm">%</span>' +
                         '</div>' +
-                        '<div class="mt-2 text-xs text-gray-500">' +
-                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
+                        '<div id="percentage-others-list-bill"></div>' +
+                        '</div>' +
+                        '<div class="border-t pt-2 mt-2">' +
+                        '<div class="flex justify-between text-sm">' +
+                        '<span>Total:</span><span id="percentage-total-bill" class="font-medium">0%</span>' +
+                        '</div>' +
+                        '<div id="percentage-error-bill" class="text-xs text-red-600 mt-1" style="display:none;">Must total 100%</div>' +
                         '</div>' +
                         '</div>' +
-                        '<div id="custom-split" style="display:none;">' +
-                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
-                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
+                        
+                        // Custom amounts inputs
+                        '<div id="custom-split-bill" style="display:none;" class="space-y-2">' +
+                        '<div class="p-3 bg-white rounded border border-blue-200">' +
+                        '<div class="space-y-2" id="custom-inputs-bill">' +
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">You:</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<span class="text-sm">$</span>' +
+                        '<input type="number" name="userAmount" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateBillSplitPreview()">' +
+                        '</div>' +
+                        '</div>' +
+                        '<div id="custom-others-list-bill"></div>' +
+                        '</div>' +
+                        '<div class="border-t pt-2 mt-2">' +
+                        '<div class="flex justify-between text-sm">' +
+                        '<span>Split total:</span><span id="custom-total-bill" class="font-medium">$0.00</span>' +
+                        '</div>' +
+                        '<div class="flex justify-between text-sm text-gray-500">' +
+                        '<span>Bill total:</span><span id="custom-bill-total">$0.00</span>' +
+                        '</div>' +
+                        '<div id="custom-error-bill" class="text-xs text-red-600 mt-1" style="display:none;">Must equal bill total</div>' +
+                        '</div>' +
+                        '</div>' +
+                        '</div>' +
+                        
                         '</div>' +
                         '</div>';
                 } else {
@@ -2186,7 +2312,7 @@
                     hiddenInput +
                     '<div class="space-y-4">' +
                     '<input type="text" name="name" placeholder="Bill Name" required value="' + nameValue + '" class="form-input">' +
-                    '<input type="number" name="amount" placeholder="Total Amount" step="0.01" required value="' + amountValue + '" class="form-input">' +
+                    '<input type="number" name="amount" placeholder="Total Amount" step="0.01" required value="' + amountValue + '" class="form-input" oninput="window.updateBillSplitPreview()">' +
                     '<input type="date" name="dueDate" required value="' + dueDateValue + '" class="form-input">' +
                     '<select name="category" class="form-input">' + categoryOptions + '</select>' +
                     recurringSection +
@@ -2202,48 +2328,100 @@
             buildExpenseModal(connections) {
                 this.receiptItems = [{ name: '', amount: 0 }];
                 
-                let connectionOptions = '<option value="">Just me (no sharing)</option>';
-                for (const conn of connections) {
-                    connectionOptions += '<option value="' + conn.id + '">' + conn.name + '</option>';
-                }
-                
                 let sharingSection = '';
                 if (connections.length > 0) {
+                    let connectionCheckboxes = '';
+                    for (const conn of connections) {
+                        connectionCheckboxes += 
+                            '<label class="flex items-center p-2 hover:bg-blue-100 rounded cursor-pointer">' +
+                            '<input type="checkbox" name="shareWith[]" value="' + conn.id + '" class="mr-3 form-checkbox h-5 w-5 text-purple-600" onchange="window.updateExpenseSplitPreview()">' +
+                            '<div class="flex-1">' +
+                            '<p class="font-medium">' + conn.name + '</p>' +
+                            '<p class="text-xs text-gray-500">' + conn.email + '</p>' +
+                            '</div>' +
+                            '</label>';
+                    }
+                    
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
-                        '<h4 class="font-medium mb-2">Share this expense?</h4>' +
-                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
-                        connectionOptions +
-                        '</select>' +
+                        '<h4 class="font-medium mb-3">Share this expense?</h4>' +
+                        '<div class="space-y-1 mb-3 max-h-40 overflow-y-auto border border-blue-200 rounded p-2 bg-white" id="people-selection">' +
+                        connectionCheckboxes +
+                        '</div>' +
                         '<div id="split-options" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
-                        '<span class="text-sm">Split equally (50/50)</span>' +
+                        '<input type="radio" name="splitType" value="equal" checked class="mr-2" onchange="window.updateExpenseSplitPreview()">' +
+                        '<span class="text-sm">Split equally</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
+                        '<input type="radio" name="splitType" value="percentage" class="mr-2" onchange="window.updateExpenseSplitPreview()">' +
                         '<span class="text-sm">Split by percentage</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="custom" class="mr-2">' +
+                        '<input type="radio" name="splitType" value="custom" class="mr-2" onchange="window.updateExpenseSplitPreview()">' +
                         '<span class="text-sm">Custom amounts</span>' +
                         '</label>' +
                         '</div>' +
-                        '<div id="percentage-split" style="display:none;">' +
-                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
-                        '<div class="flex items-center space-x-2">' +
-                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
+                        
+                        // Equal split preview
+                        '<div id="equal-split-preview" class="p-3 bg-white rounded border border-blue-200">' +
+                        '<div class="text-sm text-gray-600 space-y-1">' +
+                        '<div class="flex justify-between"><span>You:</span><span id="equal-you-amount">$0.00</span></div>' +
+                        '<div id="equal-others-list"></div>' +
+                        '<div class="border-t pt-1 mt-1 font-medium flex justify-between">' +
+                        '<span>Per person:</span><span id="equal-per-person">$0.00</span>' +
+                        '</div>' +
+                        '</div>' +
+                        '</div>' +
+                        
+                        // Percentage split inputs
+                        '<div id="percentage-split" style="display:none;" class="space-y-2">' +
+                        '<div class="p-3 bg-white rounded border border-blue-200">' +
+                        '<div class="space-y-2" id="percentage-inputs">' +
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">You:</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<input type="number" name="userPercentage" placeholder="0" min="0" max="100" step="0.01" value="" class="form-input w-20 text-sm" oninput="window.updateExpenseSplitPreview()">' +
                         '<span class="text-sm">%</span>' +
                         '</div>' +
-                        '<div class="mt-2 text-xs text-gray-500">' +
-                        '<span id="other-percentage">Other person: 50%</span>' +
+                        '</div>' +
+                        '<div id="percentage-others-list"></div>' +
+                        '</div>' +
+                        '<div class="border-t pt-2 mt-2">' +
+                        '<div class="flex justify-between text-sm">' +
+                        '<span>Total:</span><span id="percentage-total" class="font-medium">0%</span>' +
+                        '</div>' +
+                        '<div id="percentage-error" class="text-xs text-red-600 mt-1" style="display:none;">Must total 100%</div>' +
                         '</div>' +
                         '</div>' +
-                        '<div id="custom-split" style="display:none;">' +
-                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
-                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
+                        
+                        // Custom amounts inputs
+                        '<div id="custom-split" style="display:none;" class="space-y-2">' +
+                        '<div class="p-3 bg-white rounded border border-blue-200">' +
+                        '<div class="space-y-2" id="custom-inputs">' +
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">You:</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<span class="text-sm">$</span>' +
+                        '<input type="number" name="userAmount" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateExpenseSplitPreview()">' +
+                        '</div>' +
+                        '</div>' +
+                        '<div id="custom-others-list"></div>' +
+                        '</div>' +
+                        '<div class="border-t pt-2 mt-2">' +
+                        '<div class="flex justify-between text-sm">' +
+                        '<span>Split total:</span><span id="custom-total" class="font-medium">$0.00</span>' +
+                        '</div>' +
+                        '<div class="flex justify-between text-sm text-gray-500">' +
+                        '<span>Expense total:</span><span id="custom-expense-total">$0.00</span>' +
+                        '</div>' +
+                        '<div id="custom-error" class="text-xs text-red-600 mt-1" style="display:none;">Must equal expense total</div>' +
+                        '</div>' +
+                        '</div>' +
+                        '</div>' +
+                        
                         '</div>' +
                         '</div>';
                 } else {
@@ -3329,10 +3507,318 @@
             }
         }
 
+        // NEW: Multi-person expense split preview and calculation
+        function updateExpenseSplitPreview() {
+            const checkedBoxes = document.querySelectorAll('input[name="shareWith[]"]:checked');
+            const splitOptions = document.getElementById('split-options');
+            const totalAmountInput = document.querySelector('input[name="totalAmount"]');
+            const totalAmount = parseFloat(totalAmountInput?.value || 0);
+            
+            // Show/hide split options based on selection
+            if (splitOptions) {
+                splitOptions.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
+            }
+            
+            if (checkedBoxes.length === 0 || totalAmount === 0) return;
+            
+            const selectedPeople = Array.from(checkedBoxes);
+            const splitType = document.querySelector('input[name="splitType"]:checked')?.value || 'equal';
+            
+            // Update split preview based on type
+            updateSplitTypeDisplay(splitType);
+            
+            if (splitType === 'equal') {
+                updateEqualSplitPreview(selectedPeople, totalAmount);
+            } else if (splitType === 'percentage') {
+                updatePercentageSplitInputs(selectedPeople, totalAmount);
+            } else if (splitType === 'custom') {
+                updateCustomSplitInputs(selectedPeople, totalAmount);
+            }
+        }
+        
+        function updateSplitTypeDisplay(splitType) {
+            const equalPreview = document.getElementById('equal-split-preview');
+            const percentageDiv = document.getElementById('percentage-split');
+            const customDiv = document.getElementById('custom-split');
+            
+            if (equalPreview) equalPreview.style.display = splitType === 'equal' ? 'block' : 'none';
+            if (percentageDiv) percentageDiv.style.display = splitType === 'percentage' ? 'block' : 'none';
+            if (customDiv) customDiv.style.display = splitType === 'custom' ? 'block' : 'none';
+        }
+        
+        function updateEqualSplitPreview(selectedPeople, totalAmount) {
+            const peopleCount = selectedPeople.length + 1; // +1 for creator
+            const perPerson = totalAmount / peopleCount;
+            
+            const equalYouAmount = document.getElementById('equal-you-amount');
+            const equalOthersList = document.getElementById('equal-others-list');
+            const equalPerPerson = document.getElementById('equal-per-person');
+            
+            if (equalYouAmount) equalYouAmount.textContent = '$' + perPerson.toFixed(2);
+            if (equalPerPerson) equalPerPerson.textContent = '$' + perPerson.toFixed(2);
+            
+            if (equalOthersList) {
+                let othersHTML = '';
+                selectedPeople.forEach(checkbox => {
+                    const label = checkbox.closest('label');
+                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                    othersHTML += '<div class="flex justify-between"><span>' + name + ':</span><span>$' + perPerson.toFixed(2) + '</span></div>';
+                });
+                equalOthersList.innerHTML = othersHTML;
+            }
+        }
+        
+        function updatePercentageSplitInputs(selectedPeople, totalAmount) {
+            const percentageOthersList = document.getElementById('percentage-others-list');
+            
+            if (percentageOthersList) {
+                let othersHTML = '';
+                selectedPeople.forEach(checkbox => {
+                    const label = checkbox.closest('label');
+                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                    const userId = checkbox.value;
+                    othersHTML += 
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">' + name + ':</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateExpenseSplitPreview()">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '</div>';
+                });
+                percentageOthersList.innerHTML = othersHTML;
+            }
+            
+            // Calculate total percentage
+            const userPercentage = parseFloat(document.querySelector('input[name="userPercentage"]')?.value || 0);
+            let totalPercentage = userPercentage;
+            
+            selectedPeople.forEach(checkbox => {
+                const userId = checkbox.value;
+                const percentInput = document.querySelector('input[name="percentage-' + userId + '"]');
+                totalPercentage += parseFloat(percentInput?.value || 0);
+            });
+            
+            const percentTotal = document.getElementById('percentage-total');
+            const percentError = document.getElementById('percentage-error');
+            
+            if (percentTotal) {
+                percentTotal.textContent = totalPercentage.toFixed(2) + '%';
+                percentTotal.className = totalPercentage === 100 ? 'font-medium text-green-600' : 'font-medium text-red-600';
+            }
+            
+            if (percentError) {
+                percentError.style.display = totalPercentage !== 100 ? 'block' : 'none';
+            }
+        }
+        
+        function updateCustomSplitInputs(selectedPeople, totalAmount) {
+            const customOthersList = document.getElementById('custom-others-list');
+            
+            if (customOthersList) {
+                let othersHTML = '';
+                selectedPeople.forEach(checkbox => {
+                    const label = checkbox.closest('label');
+                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                    const userId = checkbox.value;
+                    othersHTML += 
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">' + name + ':</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<span class="text-sm">$</span>' +
+                        '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateExpenseSplitPreview()">' +
+                        '</div>' +
+                        '</div>';
+                });
+                customOthersList.innerHTML = othersHTML;
+            }
+            
+            // Calculate total custom amounts
+            const userAmount = parseFloat(document.querySelector('input[name="userAmount"]')?.value || 0);
+            let totalCustom = userAmount;
+            
+            selectedPeople.forEach(checkbox => {
+                const userId = checkbox.value;
+                const amountInput = document.querySelector('input[name="custom-' + userId + '"]');
+                totalCustom += parseFloat(amountInput?.value || 0);
+            });
+            
+            const customTotal = document.getElementById('custom-total');
+            const customExpenseTotal = document.getElementById('custom-expense-total');
+            const customError = document.getElementById('custom-error');
+            
+            if (customTotal) {
+                customTotal.textContent = '$' + totalCustom.toFixed(2);
+                customTotal.className = Math.abs(totalCustom - totalAmount) < 0.01 ? 'font-medium text-green-600' : 'font-medium text-red-600';
+            }
+            
+            if (customExpenseTotal) {
+                customExpenseTotal.textContent = '$' + totalAmount.toFixed(2);
+            }
+            
+            if (customError) {
+                customError.style.display = Math.abs(totalCustom - totalAmount) >= 0.01 ? 'block' : 'none';
+            }
+        }
+
+        // NEW: Multi-person bill split preview and calculation
+        function updateBillSplitPreview() {
+            const checkedBoxes = document.querySelectorAll('input[name="shareWith[]"]:checked');
+            const splitOptions = document.getElementById('split-options-bill');
+            const amountInput = document.querySelector('input[name="amount"]');
+            const totalAmount = parseFloat(amountInput?.value || 0);
+            
+            // Show/hide split options based on selection
+            if (splitOptions) {
+                splitOptions.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
+            }
+            
+            if (checkedBoxes.length === 0 || totalAmount === 0) return;
+            
+            const selectedPeople = Array.from(checkedBoxes);
+            const splitType = document.querySelector('input[name="splitType"]:checked')?.value || 'equal';
+            
+            // Update split preview based on type
+            updateBillSplitTypeDisplay(splitType);
+            
+            if (splitType === 'equal') {
+                updateEqualBillSplitPreview(selectedPeople, totalAmount);
+            } else if (splitType === 'percentage') {
+                updatePercentageBillSplitInputs(selectedPeople, totalAmount);
+            } else if (splitType === 'custom') {
+                updateCustomBillSplitInputs(selectedPeople, totalAmount);
+            }
+        }
+        
+        function updateBillSplitTypeDisplay(splitType) {
+            const equalPreview = document.getElementById('equal-split-preview-bill');
+            const percentageDiv = document.getElementById('percentage-split-bill');
+            const customDiv = document.getElementById('custom-split-bill');
+            
+            if (equalPreview) equalPreview.style.display = splitType === 'equal' ? 'block' : 'none';
+            if (percentageDiv) percentageDiv.style.display = splitType === 'percentage' ? 'block' : 'none';
+            if (customDiv) customDiv.style.display = splitType === 'custom' ? 'block' : 'none';
+        }
+        
+        function updateEqualBillSplitPreview(selectedPeople, totalAmount) {
+            const peopleCount = selectedPeople.length + 1;
+            const perPerson = totalAmount / peopleCount;
+            
+            const equalYouAmount = document.getElementById('equal-you-amount-bill');
+            const equalOthersList = document.getElementById('equal-others-list-bill');
+            const equalPerPerson = document.getElementById('equal-per-person-bill');
+            
+            if (equalYouAmount) equalYouAmount.textContent = '$' + perPerson.toFixed(2);
+            if (equalPerPerson) equalPerPerson.textContent = '$' + perPerson.toFixed(2);
+            
+            if (equalOthersList) {
+                let othersHTML = '';
+                selectedPeople.forEach(checkbox => {
+                    const label = checkbox.closest('label');
+                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                    othersHTML += '<div class="flex justify-between"><span>' + name + ':</span><span>$' + perPerson.toFixed(2) + '</span></div>';
+                });
+                equalOthersList.innerHTML = othersHTML;
+            }
+        }
+        
+        function updatePercentageBillSplitInputs(selectedPeople, totalAmount) {
+            const percentageOthersList = document.getElementById('percentage-others-list-bill');
+            
+            if (percentageOthersList) {
+                let othersHTML = '';
+                selectedPeople.forEach(checkbox => {
+                    const label = checkbox.closest('label');
+                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                    const userId = checkbox.value;
+                    othersHTML += 
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">' + name + ':</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateBillSplitPreview()">' +
+                        '<span class="text-sm">%</span>' +
+                        '</div>' +
+                        '</div>';
+                });
+                percentageOthersList.innerHTML = othersHTML;
+            }
+            
+            const userPercentage = parseFloat(document.querySelector('input[name="userPercentage"]')?.value || 0);
+            let totalPercentage = userPercentage;
+            
+            selectedPeople.forEach(checkbox => {
+                const userId = checkbox.value;
+                const percentInput = document.querySelector('input[name="percentage-' + userId + '"]');
+                totalPercentage += parseFloat(percentInput?.value || 0);
+            });
+            
+            const percentTotal = document.getElementById('percentage-total-bill');
+            const percentError = document.getElementById('percentage-error-bill');
+            
+            if (percentTotal) {
+                percentTotal.textContent = totalPercentage.toFixed(2) + '%';
+                percentTotal.className = totalPercentage === 100 ? 'font-medium text-green-600' : 'font-medium text-red-600';
+            }
+            
+            if (percentError) {
+                percentError.style.display = totalPercentage !== 100 ? 'block' : 'none';
+            }
+        }
+        
+        function updateCustomBillSplitInputs(selectedPeople, totalAmount) {
+            const customOthersList = document.getElementById('custom-others-list-bill');
+            
+            if (customOthersList) {
+                let othersHTML = '';
+                selectedPeople.forEach(checkbox => {
+                    const label = checkbox.closest('label');
+                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                    const userId = checkbox.value;
+                    othersHTML += 
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-sm">' + name + ':</span>' +
+                        '<div class="flex items-center space-x-1">' +
+                        '<span class="text-sm">$</span>' +
+                        '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateBillSplitPreview()">' +
+                        '</div>' +
+                        '</div>';
+                });
+                customOthersList.innerHTML = othersHTML;
+            }
+            
+            const userAmount = parseFloat(document.querySelector('input[name="userAmount"]')?.value || 0);
+            let totalCustom = userAmount;
+            
+            selectedPeople.forEach(checkbox => {
+                const userId = checkbox.value;
+                const amountInput = document.querySelector('input[name="custom-' + userId + '"]');
+                totalCustom += parseFloat(amountInput?.value || 0);
+            });
+            
+            const customTotal = document.getElementById('custom-total-bill');
+            const customBillTotal = document.getElementById('custom-bill-total');
+            const customError = document.getElementById('custom-error-bill');
+            
+            if (customTotal) {
+                customTotal.textContent = '$' + totalCustom.toFixed(2);
+                customTotal.className = Math.abs(totalCustom - totalAmount) < 0.01 ? 'font-medium text-green-600' : 'font-medium text-red-600';
+            }
+            
+            if (customBillTotal) {
+                customBillTotal.textContent = '$' + totalAmount.toFixed(2);
+            }
+            
+            if (customError) {
+                customError.style.display = Math.abs(totalCustom - totalAmount) >= 0.01 ? 'block' : 'none';
+            }
+        }
+
         // Attach functions to window for inline event handlers
         window.toggleSplitType = toggleSplitType;
         window.toggleRecurrenceOptions = toggleRecurrenceOptions;
         window.updatePercentageOther = updatePercentageOther;
+        window.updateExpenseSplitPreview = updateExpenseSplitPreview;
+        window.updateBillSplitPreview = updateBillSplitPreview;
 
         // Handle custom split radio change
         document.addEventListener('change', (e) => {
