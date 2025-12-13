@@ -2075,6 +2075,11 @@
                 setTimeout(() => {
                     const firstInput = modal.querySelector('input, select, textarea');
                     if (firstInput) firstInput.focus();
+                    
+                    // Update receipt items display if expense modal
+                    if (modalType === 'expense' && this.receiptItems.length > 0) {
+                        this.updateReceiptItemsDisplay();
+                    }
                 }, 100);
             }
 
