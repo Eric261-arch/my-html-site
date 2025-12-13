@@ -2505,9 +2505,18 @@
 
             // UPDATED: Dashboard now includes Partners Connected section
             async renderDashboard(totals, notifications, connections) {
-                // Calculate unpaid amounts
-                const totalUnpaid = await this.service.getTotalUnpaidShared();
-                const unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                // Calculate unpaid amounts (only if service is available and user is logged in)
+                let totalUnpaid = 0;
+                let unpaidByPerson = {};
+                
+                if (this.service && this.service.user) {
+                    try {
+                        totalUnpaid = await this.service.getTotalUnpaidShared();
+                        unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                    } catch (error) {
+                        console.log('Could not fetch unpaid amounts:', error);
+                    }
+                }
                 
                 const incomeBlurClass = this.privateMode ? 'filter blur-sm' : '';
                 const remainingBlurClass = this.privateMode ? 'filter blur-sm' : '';
@@ -2772,10 +2781,18 @@
             async renderBillsTab(bills) {
 
 
-                // Calculate unpaid amounts by person
+                // Calculate unpaid amounts by person (only if service is available)
 
 
-                const unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                let unpaidByPerson = {};
+                
+                if (this.service && this.service.user) {
+                    try {
+                        unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                    } catch (error) {
+                        console.log('Could not fetch unpaid amounts:', error);
+                    }
+                }
 
 
                 
@@ -2969,10 +2986,18 @@
             async renderExpensesTab(expenses) {
 
 
-                // Calculate unpaid amounts by person
+                // Calculate unpaid amounts by person (only if service is available)
 
 
-                const unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                let unpaidByPerson = {};
+                
+                if (this.service && this.service.user) {
+                    try {
+                        unpaidByPerson = await this.service.calculateUnpaidByPerson();
+                    } catch (error) {
+                        console.log('Could not fetch unpaid amounts:', error);
+                    }
+                }
 
 
                 
