@@ -2381,7 +2381,7 @@
                     const notifications = await storage.getUpcomingBillNotifications();
                     const connections = await storage.getUserConnections(); // Get connections for dashboard
                     
-                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, history, notifications, connections);
+                    app.innerHTML = await this.renderApp(totals, incomes, bills, expenses, history, notifications, connections);
                 }
             }
 
@@ -2427,7 +2427,7 @@
             }
 
             // FIXED: Updated tab structure (removed connections tab, added mobile improvements)
-            renderApp(totals, incomes, bills, expenses, history, notifications, connections) {
+            async renderApp(totals, incomes, bills, expenses, history, notifications, connections) {
                 const userName = this.currentUser?.name || 'User';
                 const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history']; // REMOVED: connections tab
                 
@@ -2450,13 +2450,13 @@
                 
                 let mainContent = '';
                 if (this.activeTab === 'dashboard') {
-                    mainContent = this.renderDashboard(totals, notifications, connections);
+                    mainContent = await this.renderDashboard(totals, notifications, connections);
                 } else if (this.activeTab === 'income') {
                     mainContent = this.renderIncomeTab(incomes);
                 } else if (this.activeTab === 'bills') {
-                    mainContent = this.renderBillsTab(bills);
+                    mainContent = await this.renderBillsTab(bills);
                 } else if (this.activeTab === 'expenses') {
-                    mainContent = this.renderExpensesTab(expenses);
+                    mainContent = await this.renderExpensesTab(expenses);
                 } else if (this.activeTab === 'history') {
                     mainContent = this.renderHistoryTab(history);
                 }
