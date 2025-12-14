@@ -1256,7 +1256,7 @@
                     // Get completed bills/expenses shared with user
                     const { data: sharedHistory, error: sharedError } = await supabase
                         .from('bill_shares')
-                        .select('*, bills!inner(*)')
+                        .select('*, bills!inner(*, bill_shares(*))')
                         .eq('user_id', this.user.id)
                         .eq('bills.paid', true);
 
