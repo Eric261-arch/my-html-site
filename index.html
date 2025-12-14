@@ -4368,13 +4368,16 @@
                         const userAmount = item.user_share || item.amount;
                         const isExpense = item.category === 'expense';
                         
-                        // Get shared partner names
+                        // Get shared partner names from bill_shares
                         let sharedWithNames = [];
-                        if (isShared && item.shared_with && Array.isArray(item.shared_with)) {
-                            item.shared_with.forEach(partnerId => {
-                                const partner = connections.find(c => c.id === partnerId);
-                                if (partner) {
-                                    sharedWithNames.push(partner.name);
+                        if (isShared && item.bill_shares && Array.isArray(item.bill_shares)) {
+                            item.bill_shares.forEach(share => {
+                                // Skip current user
+                                if (share.user_id !== this.currentUser.id) {
+                                    const partner = connections.find(c => c.id === share.user_id);
+                                    if (partner) {
+                                        sharedWithNames.push(partner.name);
+                                    }
                                 }
                             });
                         }
