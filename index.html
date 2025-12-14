@@ -893,6 +893,64 @@
                 }
             }
 
+            // Attachment methods for receipts/images
+            async uploadAttachment(billId, fileName, fileSize, mimeType, fileData) {
+                try {
+                    const attachmentData = {
+                        user_id: this.user.id,
+                        bill_id: billId,
+                        file_name: fileName,
+                        file_size: fileSize,
+                        mime_type: mimeType,
+                        file_data: fileData // Base64 encoded
+                    };
+
+                    const { data, error } = await supabase
+                        .from('attachments')
+                        .insert([attachmentData])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Upload attachment error:', error);
+                    throw error;
+                }
+            }
+
+            async getAttachments(billId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('attachments')
+                        .select('*')
+                        .eq('bill_id', billId)
+                        .order('created_at', { ascending: true });
+
+                    if (error) throw error;
+                    return data || [];
+                } catch (error) {
+                    console.error('Get attachments error:', error);
+                    return [];
+                }
+            }
+
+            async deleteAttachment(attachmentId) {
+                try {
+                    const { error } = await supabase
+                        .from('attachments')
+                        .delete()
+                        .eq('id', attachmentId)
+                        .eq('user_id', this.user.id);
+
+                    if (error) throw error;
+                    return true;
+                } catch (error) {
+                    console.error('Delete attachment error:', error);
+                    throw error;
+                }
+            }
+
             // Enhanced Bill/Expense methods
             async addBill(billData) {
                 try {
@@ -2127,11 +2185,36 @@
                                 }
                             }
                             
+                            let billId;
                             if (formType === 'edit-bill' && data.id) {
                                 await storage.updateBill(data.id, billData);
+                                billId = data.id;
                             } else {
-                                await storage.addBill(billData);
+                                const newBill = await storage.addBill(billData);
+                                billId = newBill.id;
                             }
+                            
+                            // Handle file attachment
+                            const fileInput = document.getElementById('bill-attachment');
+                            if (fileInput && fileInput.files && fileInput.files[0]) {
+                                const file = fileInput.files[0];
+                                const reader = new FileReader();
+                                reader.onload = async (e) => {
+                                    try {
+                                        await storage.uploadAttachment(
+                                            billId,
+                                            file.name,
+                                            file.size,
+                                            file.type,
+                                            e.target.result // Base64 data
+                                        );
+                                    } catch (error) {
+                                        console.error('Error uploading attachment:', error);
+                                    }
+                                };
+                                reader.readAsDataURL(file);
+                            }
+                            
                             this.closeModal();
                             this.render();
                             break;
@@ -2197,11 +2280,36 @@
                                 }
                             }
 
+                            let expenseId;
                             if (formType === 'edit-expense' && data.id) {
                                 await storage.updateExpense(data.id, expenseData);
+                                expenseId = data.id;
                             } else {
-                                await storage.addExpense(expenseData);
+                                const newExpense = await storage.addExpense(expenseData);
+                                expenseId = newExpense.id;
                             }
+                            
+                            // Handle file attachment
+                            const fileInput = document.getElementById('expense-attachment');
+                            if (fileInput && fileInput.files && fileInput.files[0]) {
+                                const file = fileInput.files[0];
+                                const reader = new FileReader();
+                                reader.onload = async (e) => {
+                                    try {
+                                        await storage.uploadAttachment(
+                                            expenseId,
+                                            file.name,
+                                            file.size,
+                                            file.type,
+                                            e.target.result // Base64 data
+                                        );
+                                    } catch (error) {
+                                        console.error('Error uploading attachment:', error);
+                                    }
+                                };
+                                reader.readAsDataURL(file);
+                            }
+                            
                             this.receiptItems = [];
                             this.closeModal();
                             this.render();
@@ -2744,6 +2852,11 @@
                     '<select name="category" class="form-input">' + categoryOptions + '</select>' +
                     recurringSection +
                     sharingSection +
+                    '<div class="p-4 bg-gray-50 rounded-lg">' +
+                    '<label class="block text-sm font-medium mb-2">📎 Attach Receipt/Image</label>' +
+                    '<input type="file" id="bill-attachment" accept="image/*" class="form-input">' +
+                    '<p class="text-xs text-gray-500 mt-1">Upload a photo of your receipt (optional)</p>' +
+                    '</div>' +
                     '<div class="grid grid-cols-2 gap-3">' +
                     '<button type="submit" class="btn btn-primary">' + submitText + ' Bill</button>' +
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
@@ -2899,6 +3012,11 @@
                     '<input type="hidden" name="totalAmount" value="0">' +
                     '</div>' +
                     sharingSection +
+                    '<div class="p-4 bg-gray-50 rounded-lg">' +
+                    '<label class="block text-sm font-medium mb-2">📎 Attach Receipt/Image</label>' +
+                    '<input type="file" id="expense-attachment" accept="image/*" class="form-input">' +
+                    '<p class="text-xs text-gray-500 mt-1">Upload a photo of your receipt (optional)</p>' +
+                    '</div>' +
                     '<div class="grid grid-cols-2 gap-3">' +
                     '<button type="submit" class="btn btn-primary">' + submitText + ' Expense</button>' +
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
