@@ -1928,6 +1928,17 @@
                                 await this.updateNotificationBadge();
                             }, 500);
                             break;
+                        
+                        case 'view-attachment':
+                            this.viewAttachment(element.dataset.attachmentData, element.dataset.attachmentName);
+                            break;
+                        
+                        case 'delete-attachment':
+                            if (confirm('Delete this attachment?')) {
+                                await storage.deleteAttachment(element.dataset.attachmentId);
+                                this.render();
+                            }
+                            break;
                     }
                 } catch (error) {
                     this.showError(error.message || 'An error occurred');
@@ -2462,6 +2473,28 @@
                         badge.remove();
                     }
                 }
+            }
+
+            viewAttachment(imageData, fileName) {
+                const modal = document.createElement('div');
+                modal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50';
+                modal.innerHTML = '<div class="relative max-w-4xl max-h-screen">' +
+                    '<button data-action="close-attachment" class="absolute -top-10 right-0 text-white hover:text-gray-300">' +
+                    '<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />' +
+                    '</svg>' +
+                    '</button>' +
+                    '<img src="' + imageData + '" alt="' + fileName + '" class="max-w-full max-h-screen rounded shadow-2xl">' +
+                    '<p class="text-white text-center mt-2">' + fileName + '</p>' +
+                    '</div>';
+                document.body.appendChild(modal);
+                
+                // Close on click outside or close button
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal || e.target.closest('[data-action="close-attachment"]')) {
+                        modal.remove();
+                    }
+                });
             }
 
             async getModalContent(type, itemId) {
@@ -3815,6 +3848,32 @@
                             actionButton = '<button data-action="mark-paid" data-bill-id="' + bill.id + '" data-shared="' + isShared + '" data-share-id="' + shareId + '" class="w-full mt-3 btn btn-success">Mark as Paid</button>';
                         }
                         
+                        // Fetch attachments for this bill
+                        const attachments = await storage.getAttachments(bill.id);
+                        let attachmentSection = '';
+                        if (attachments.length > 0) {
+                            attachmentSection = '<div class="mt-3 pt-3 border-t border-gray-200">' +
+                                '<div class="flex items-center gap-2 mb-2">' +
+                                '<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />' +
+                                '</svg>' +
+                                '<span class="text-sm font-medium text-gray-700">' + attachments.length + ' attachment' + (attachments.length > 1 ? 's' : '') + '</span>' +
+                                '</div>' +
+                                '<div class="flex flex-wrap gap-2">';
+                            
+                            attachments.forEach(att => {
+                                attachmentSection += 
+                                    '<div class="relative group">' +
+                                    '<img src="' + att.file_data + '" alt="' + att.file_name + '" class="w-20 h-20 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-75" data-action="view-attachment" data-attachment-data="' + att.file_data + '" data-attachment-name="' + att.file_name + '">' +
+                                    '<button data-action="delete-attachment" data-attachment-id="' + att.id + '" class="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition" title="Delete">' +
+                                    '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>' +
+                                    '</button>' +
+                                    '</div>';
+                            });
+                            
+                            attachmentSection += '</div></div>';
+                        }
+                        
                         billsList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
                             '<div class="flex items-center justify-between mb-3">' +
                             '<div class="flex items-center space-x-4 flex-1">' +
@@ -3853,6 +3912,7 @@
                             '</div>' +
                             '</div>' +
                             splitDetails +
+                            attachmentSection +
                             actionButton +
                             '</div>';
                     }
@@ -4043,6 +4103,32 @@
                             actionButton = '<button data-action="mark-paid" data-bill-id="' + expense.id + '" data-shared="' + isShared + '" data-share-id="' + shareId + '" class="w-full mt-3 btn btn-success">Mark as Paid</button>';
                         }
                         
+                        // Fetch attachments for this expense
+                        const attachments = await storage.getAttachments(expense.id);
+                        let attachmentSection = '';
+                        if (attachments.length > 0) {
+                            attachmentSection = '<div class="mt-3 pt-3 border-t border-gray-200">' +
+                                '<div class="flex items-center gap-2 mb-2">' +
+                                '<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />' +
+                                '</svg>' +
+                                '<span class="text-sm font-medium text-gray-700">' + attachments.length + ' attachment' + (attachments.length > 1 ? 's' : '') + '</span>' +
+                                '</div>' +
+                                '<div class="flex flex-wrap gap-2">';
+                            
+                            attachments.forEach(att => {
+                                attachmentSection += 
+                                    '<div class="relative group">' +
+                                    '<img src="' + att.file_data + '" alt="' + att.file_name + '" class="w-20 h-20 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-75" data-action="view-attachment" data-attachment-data="' + att.file_data + '" data-attachment-name="' + att.file_name + '">' +
+                                    '<button data-action="delete-attachment" data-attachment-id="' + att.id + '" class="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition" title="Delete">' +
+                                    '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>' +
+                                    '</button>' +
+                                    '</div>';
+                            });
+                            
+                            attachmentSection += '</div></div>';
+                        }
+                        
                         expensesList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
                             '<div class="flex items-center justify-between mb-3">' +
                             '<div class="flex items-center space-x-4 flex-1">' +
@@ -4081,6 +4167,7 @@
                             '</div>' +
                             '</div>' +
                             splitDetails +
+                            attachmentSection +
                             actionButton +
                             '</div>';
                     }
