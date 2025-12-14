@@ -1251,33 +1251,66 @@
                         .eq('paid', true)
                         .order('paid_date', { ascending: false });
 
-                    if (ownedError) throw ownedError;
+                    if (ownedError) {
+                        console.error('Owned history error:', ownedError);
+                        throw ownedError;
+                    }
 
-                    // Get completed bills/expenses shared with user
-                    const { data: sharedHistory, error: sharedError } = await supabase
+                    console.log('Owned history:', ownedHistory);
+
+                    // Get completed bills/expenses shared with user - first get the shares
+                    const { data: userShares, error: sharesError } = await supabase
                         .from('bill_shares')
-                        .select('*, bills!inner(*, bill_shares(*))')
-                        .eq('user_id', this.user.id)
-                        .eq('bills.paid', true);
+                        .select('bill_id, amount, paid, id')
+                        .eq('user_id', this.user.id);
 
-                    if (sharedError) throw sharedError;
+                    if (sharesError) {
+                        console.error('Shares error:', sharesError);
+                        throw sharesError;
+                    }
+
+                    console.log('User shares:', userShares);
+
+                    // Get the bill IDs where the bill is paid
+                    const billIds = userShares?.map(share => share.bill_id) || [];
+                    
+                    let sharedBills = [];
+                    if (billIds.length > 0) {
+                        const { data: bills, error: billsError } = await supabase
+                            .from('bills')
+                            .select('*, bill_shares(*)')
+                            .in('id', billIds)
+                            .eq('paid', true);
+
+                        if (billsError) {
+                            console.error('Shared bills error:', billsError);
+                            throw billsError;
+                        }
+
+                        sharedBills = bills || [];
+                    }
+
+                    console.log('Shared bills:', sharedBills);
 
                     // Combine and format history
                     const allHistory = [...(ownedHistory || [])];
                     
                     // Add shared history (avoiding duplicates)
-                    sharedHistory?.forEach(share => {
-                        if (!allHistory.find(item => item.id === share.bills.id)) {
+                    sharedBills?.forEach(bill => {
+                        if (!allHistory.find(item => item.id === bill.id)) {
+                            // Find user's share amount
+                            const userShare = userShares.find(share => share.bill_id === bill.id);
                             allHistory.push({
-                                ...share.bills,
-                                user_share: share.amount,
+                                ...bill,
+                                user_share: userShare?.amount || bill.amount,
                                 is_shared: true,
-                                user_paid: share.paid,
-                                share_id: share.id
+                                user_paid: userShare?.paid,
+                                share_id: userShare?.id
                             });
                         }
                     });
 
+                    console.log('All history:', allHistory);
                     return allHistory;
                 } catch (error) {
                     console.error('Get payment history error:', error);
