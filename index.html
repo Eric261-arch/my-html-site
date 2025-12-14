@@ -1311,6 +1311,14 @@
                     });
 
                     console.log('All history:', allHistory);
+                    
+                    // Sort by paid_date, newest first
+                    allHistory.sort((a, b) => {
+                        const dateA = new Date(a.paid_date || a.due_date);
+                        const dateB = new Date(b.paid_date || b.due_date);
+                        return dateB - dateA;
+                    });
+                    
                     return allHistory;
                 } catch (error) {
                     console.error('Get payment history error:', error);
@@ -4381,6 +4389,7 @@
             }
 
             async renderHistoryTab(history) {
+                console.log('renderHistoryTab called with:', history);
                 let historyContent = '';
                 
                 // Get connections for shared bill/expense info
