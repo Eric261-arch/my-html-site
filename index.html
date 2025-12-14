@@ -1787,7 +1787,12 @@
                         
                         case 'switch-tab':
                             this.activeTab = element.dataset.tab;
-                            this.render();
+                            // Show loading state
+                            const mainArea = document.querySelector('.max-w-7xl.mx-auto.p-4');
+                            if (mainArea) {
+                                mainArea.innerHTML = '<div class="flex justify-center items-center py-12"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div></div>';
+                            }
+                            await this.render();
                             break;
                         
                         case 'show-modal':
@@ -3097,14 +3102,36 @@
                 if (this.currentView === 'login') {
                     app.innerHTML = this.renderLogin();
                 } else {
-                    const totals = await this.calculateTotals();
-                    const incomes = await storage.getUserIncomes();
-                    const bills = await storage.getUserBills();
-                    const expenses = await storage.getUserExpenses();
-                    const history = await storage.getPaymentHistory();
-                    const notifications = await storage.getUpcomingBillNotifications();
-                    const connections = await storage.getUserConnections(); // Get connections for dashboard
-                    const unreadCount = await storage.getUnreadMessageCount(); // Get unread messages
+                    // Only fetch data needed for the current tab
+                    let totals = null;
+                    let incomes = [];
+                    let bills = [];
+                    let expenses = [];
+                    let history = [];
+                    let notifications = [];
+                    let connections = [];
+                    let unreadCount = 0;
+                    
+                    // Always fetch unread count (for badge)
+                    unreadCount = await storage.getUnreadMessageCount();
+                    
+                    // Fetch based on active tab
+                    if (this.activeTab === 'dashboard') {
+                        // Dashboard needs totals, notifications, and connections
+                        totals = await this.calculateTotals();
+                        notifications = await storage.getUpcomingBillNotifications();
+                        connections = await storage.getUserConnections();
+                    } else if (this.activeTab === 'income') {
+                        incomes = await storage.getUserIncomes();
+                    } else if (this.activeTab === 'bills') {
+                        bills = await storage.getUserBills();
+                        connections = await storage.getUserConnections(); // Needed for unpaid summary
+                    } else if (this.activeTab === 'expenses') {
+                        expenses = await storage.getUserExpenses();
+                        connections = await storage.getUserConnections(); // Needed for unpaid summary
+                    } else if (this.activeTab === 'history') {
+                        history = await storage.getPaymentHistory();
+                    }
                     
                     app.innerHTML = await this.renderApp(totals, incomes, bills, expenses, history, notifications, connections, unreadCount);
                 }
