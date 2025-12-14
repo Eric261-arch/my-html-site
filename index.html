@@ -1870,6 +1870,8 @@
                 this.privateMode = false;
                 this.loading = false;
                 this.receiptItems = [];
+                this.lastUnreadCount = 0;
+                this.notificationInterval = null;
                 this.init();
             }
 
@@ -1886,12 +1888,91 @@
                 this.render();
                 this.attachEventListeners();
                 window.app = this;
+                
+                // Setup notifications if user is logged in
+                if (this.currentUser) {
+                    await this.requestNotificationPermission();
+                    this.startNotificationPolling();
+                }
             }
 
             handleSignOut() {
+                this.stopNotificationPolling();
                 this.currentUser = null;
                 this.currentView = 'login';
                 this.render();
+            }
+
+            // Notification methods
+            async requestNotificationPermission() {
+                if (!('Notification' in window)) {
+                    console.log('Browser does not support notifications');
+                    return false;
+                }
+
+                if (Notification.permission === 'granted') {
+                    return true;
+                }
+
+                if (Notification.permission !== 'denied') {
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                        this.showBrowserNotification('Budget Mate', 'Notifications enabled! 🎉');
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            showBrowserNotification(title, body, data = {}) {
+                if (Notification.permission !== 'granted') return;
+                
+                const notification = new Notification(title, {
+                    body: body,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="75" font-size="75">💰</text></svg>',
+                    tag: data.tag || 'budget-mate',
+                    requireInteraction: false
+                });
+
+                notification.onclick = () => {
+                    window.focus();
+                    if (data.type === 'message' && data.partnerId) {
+                        this.showChatModal(data.partnerId);
+                    }
+                    notification.close();
+                };
+            }
+
+            async startNotificationPolling() {
+                this.notificationInterval = setInterval(async () => {
+                    if (!this.currentUser) return;
+
+                    try {
+                        const unreadCount = await storage.getUnreadMessageCount();
+                        if (unreadCount > this.lastUnreadCount) {
+                            const messages = await storage.getRecentMessages();
+                            if (messages.length > 0) {
+                                const msg = messages[0];
+                                this.showBrowserNotification(
+                                    `💬 ${msg.sender_name}`,
+                                    msg.content.substring(0, 100),
+                                    { type: 'message', partnerId: msg.sender_id, tag: 'msg-' + msg.id }
+                                );
+                            }
+                        }
+                        this.lastUnreadCount = unreadCount;
+                    } catch (error) {
+                        console.error('Notification polling error:', error);
+                    }
+                }, 30000); // Check every 30 seconds
+            }
+
+            stopNotificationPolling() {
+                if (this.notificationInterval) {
+                    clearInterval(this.notificationInterval);
+                    this.notificationInterval = null;
+                }
             }
 
             attachEventListeners() {
