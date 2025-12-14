@@ -2195,9 +2195,9 @@
                             }
                             
                             // Handle file attachment
-                            const fileInput = document.getElementById('bill-attachment');
-                            if (fileInput && fileInput.files && fileInput.files[0]) {
-                                const file = fileInput.files[0];
+                            const billFileInput = document.getElementById('bill-attachment');
+                            if (billFileInput && billFileInput.files && billFileInput.files[0]) {
+                                const file = billFileInput.files[0];
                                 const reader = new FileReader();
                                 reader.onload = async (e) => {
                                     try {
@@ -2290,9 +2290,9 @@
                             }
                             
                             // Handle file attachment
-                            const fileInput = document.getElementById('expense-attachment');
-                            if (fileInput && fileInput.files && fileInput.files[0]) {
-                                const file = fileInput.files[0];
+                            const expenseFileInput = document.getElementById('expense-attachment');
+                            if (expenseFileInput && expenseFileInput.files && expenseFileInput.files[0]) {
+                                const file = expenseFileInput.files[0];
                                 const reader = new FileReader();
                                 reader.onload = async (e) => {
                                     try {
