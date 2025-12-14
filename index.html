@@ -833,14 +833,14 @@
 
             async getUnreadMessageCount() {
                 try {
-                    const { data, error } = await supabase
+                    const { count, error } = await supabase
                         .from('messages')
-                        .select('id', { count: 'exact', head: true })
+                        .select('*', { count: 'exact', head: true })
                         .eq('to_user_id', this.user.id)
                         .eq('read', false);
 
                     if (error) throw error;
-                    return data?.length || 0;
+                    return count || 0;
                 } catch (error) {
                     console.error('Get unread count error:', error);
                     return 0;
@@ -2236,7 +2236,7 @@
 
                 switch(type) {
                     case 'notifications':
-                        return this.buildNotificationSettingsModal();
+                        return await this.buildNotificationSettingsModal();
                         
                     case 'connections':
                         const userConnections = await storage.getUserConnections();
@@ -2310,10 +2310,60 @@
                 }
             }
 
-            buildNotificationSettingsModal() {
+            async buildNotificationSettingsModal() {
                 const currentTiming = this.currentUser?.settings?.notification_timing || 3;
                 
-                return '<h3 class="text-xl font-bold mb-4">Notification Settings</h3>' +
+                // Get recent messages
+                const recentMessages = await storage.getRecentMessages();
+                const connections = await storage.getUserConnections();
+                
+                let messagesHTML = '';
+                if (recentMessages.length > 0) {
+                    messagesHTML = '<div class="mb-6">' +
+                        '<h4 class="font-medium mb-3 flex items-center">' +
+                        '<svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />' +
+                        '</svg>' +
+                        'Recent Messages' +
+                        '</h4>' +
+                        '<div class="space-y-2 max-h-60 overflow-y-auto">';
+                    
+                    recentMessages.forEach(msg => {
+                        const partnerId = msg.from_user_id === this.currentUser.id ? msg.to_user_id : msg.from_user_id;
+                        const partner = connections.find(c => c.id === partnerId);
+                        const isFromMe = msg.from_user_id === this.currentUser.id;
+                        const isUnread = !msg.read && msg.to_user_id === this.currentUser.id;
+                        
+                        if (partner) {
+                            const preview = msg.message_text.length > 50 ? msg.message_text.substring(0, 50) + '...' : msg.message_text;
+                            const timestamp = window.formatMessageTimestamp(msg.created_at);
+                            
+                            messagesHTML += 
+                                '<button data-action="open-chat" data-partner-id="' + partnerId + '" class="w-full text-left p-3 bg-white hover:bg-gray-50 rounded-lg border border-gray-200 transition">' +
+                                '<div class="flex items-start justify-between mb-1">' +
+                                '<div class="flex items-center space-x-2">' +
+                                '<div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">' +
+                                '<svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
+                                '</svg>' +
+                                '</div>' +
+                                '<p class="font-medium text-sm">' + partner.name + '</p>' +
+                                (isUnread ? '<span class="w-2 h-2 bg-blue-500 rounded-full"></span>' : '') +
+                                '</div>' +
+                                '<span class="text-xs text-gray-500">' + timestamp + '</span>' +
+                                '</div>' +
+                                '<p class="text-sm text-gray-600 ml-10">' + (isFromMe ? 'You: ' : '') + preview + '</p>' +
+                                '</button>';
+                        }
+                    });
+                    
+                    messagesHTML += '</div></div>';
+                }
+                
+                return '<h3 class="text-xl font-bold mb-4">Notifications</h3>' +
+                    messagesHTML +
+                    '<div class="border-t pt-4">' +
+                    '<h4 class="font-medium mb-3">Notification Settings</h4>' +
                     '<form data-form="notification-settings">' +
                     '<div class="space-y-4">' +
                     '<div>' +
@@ -2330,7 +2380,8 @@
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
                     '</div>' +
                     '</div>' +
-                    '</form>';
+                    '</form>' +
+                    '</div>';
             }
 
             buildIncomeModal(isEdit, item) {
@@ -2919,8 +2970,9 @@
                     const history = await storage.getPaymentHistory();
                     const notifications = await storage.getUpcomingBillNotifications();
                     const connections = await storage.getUserConnections(); // Get connections for dashboard
+                    const unreadCount = await storage.getUnreadMessageCount(); // Get unread messages
                     
-                    app.innerHTML = await this.renderApp(totals, incomes, bills, expenses, history, notifications, connections);
+                    app.innerHTML = await this.renderApp(totals, incomes, bills, expenses, history, notifications, connections, unreadCount);
                 }
             }
 
@@ -2966,7 +3018,7 @@
             }
 
             // FIXED: Updated tab structure (removed connections tab, added mobile improvements)
-            async renderApp(totals, incomes, bills, expenses, history, notifications, connections) {
+            async renderApp(totals, incomes, bills, expenses, history, notifications, connections, unreadCount = 0) {
                 const userName = this.currentUser?.name || 'User';
                 const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history']; // REMOVED: connections tab
                 
@@ -3016,7 +3068,8 @@
                     '</div>' +
                     '</div>' +
                     '<div class="flex items-center space-x-2">' +
-                    '<button data-action="show-modal" data-modal="notifications" class="btn p-2">' +
+                    '<button data-action="show-modal" data-modal="notifications" class="btn p-2 relative">' +
+                    (unreadCount > 0 ? '<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">' + unreadCount + '</span>' : '') +
                     '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />' +
                     '</svg>' +
