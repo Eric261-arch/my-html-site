@@ -1993,16 +1993,51 @@
                         
                         case 'send-message':
                             await storage.sendMessage(data.partnerId, data.messageText);
-                            // Reopen the chat to show the new message
-                            this.closeModal();
-                            await this.showModal('chat', data.partnerId);
-                            // Scroll to bottom
-                            setTimeout(() => {
-                                const chatMessages = document.getElementById('chat-messages');
-                                if (chatMessages) {
-                                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                                }
-                            }, 100);
+                            
+                            // Update messages directly without closing modal
+                            const chatMessagesDiv = document.getElementById('chat-messages');
+                            if (chatMessagesDiv) {
+                                // Get updated messages
+                                const messages = await storage.getConversation(data.partnerId);
+                                
+                                // Rebuild messages HTML
+                                let messagesHTML = '';
+                                messages.forEach(msg => {
+                                    const isFromMe = msg.from_user_id === this.currentUser.id;
+                                    const timestamp = window.formatMessageTimestamp(msg.created_at);
+                                    
+                                    if (isFromMe) {
+                                        messagesHTML += 
+                                            '<div class="flex justify-end mb-3">' +
+                                            '<div class="max-w-xs lg:max-w-md">' +
+                                            '<div class="bg-purple-600 text-white rounded-lg rounded-tr-none px-4 py-2">' +
+                                            '<p class="text-sm">' + msg.message_text + '</p>' +
+                                            '</div>' +
+                                            '<p class="text-xs text-gray-400 mt-1 text-right">' + timestamp + '</p>' +
+                                            '</div>' +
+                                            '</div>';
+                                    } else {
+                                        messagesHTML += 
+                                            '<div class="flex justify-start mb-3">' +
+                                            '<div class="max-w-xs lg:max-w-md">' +
+                                            '<div class="bg-gray-200 text-gray-800 rounded-lg rounded-tl-none px-4 py-2">' +
+                                            '<p class="text-sm">' + msg.message_text + '</p>' +
+                                            '</div>' +
+                                            '<p class="text-xs text-gray-400 mt-1">' + timestamp + '</p>' +
+                                            '</div>' +
+                                            '</div>';
+                                    }
+                                });
+                                
+                                // Update messages
+                                chatMessagesDiv.innerHTML = messagesHTML;
+                                
+                                // Clear input and scroll to bottom
+                                const messageInput = document.querySelector('input[name="messageText"]');
+                                if (messageInput) messageInput.value = '';
+                                
+                                chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+                            }
                             break;
                         
                         case 'add-income':
