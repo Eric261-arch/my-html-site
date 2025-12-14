@@ -3798,10 +3798,12 @@
 
 
                 let unpaidByPerson = {};
+                let iOweByPerson = {};
                 
                 if (this.currentUser) {
                     try {
                         unpaidByPerson = await storage.calculateUnpaidByPerson();
+                        iOweByPerson = await storage.calculateWhatIOwe();
                     } catch (error) {
                         console.log('Could not fetch unpaid amounts:', error);
                     }
@@ -3862,22 +3864,22 @@
                             '<div class="card fade-in mb-4">' +
 
 
-                            '<div class="p-4 bg-blue-50 border-l-4 border-blue-500">' +
+                            '<div class="p-4 bg-green-50 border-l-4 border-green-500">' +
 
 
                             '<div class="flex items-center gap-2 mb-3">' +
 
 
-                            '<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
 
 
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
 
 
                             '</svg>' +
 
 
-                            '<h3 class="font-bold text-blue-900">Unpaid Bills Summary</h3>' +
+                            '<h3 class="font-bold text-green-900">💚 Money Owed to You (Bills)</h3>' +
 
 
                             '</div>' +
@@ -4014,7 +4016,37 @@
                     billsContent = '<div class="space-y-3">' + billsList + '</div>';
                 }
                 
-                return unpaidSummary + '<div class="card fade-in">' +
+                // Build Money You Owe summary (Bills - Red)
+                let iOweSummary = '';
+                if (Object.keys(iOweByPerson).length > 0) {
+                    let billsIOwe = '';
+                    for (const [person, amounts] of Object.entries(iOweByPerson)) {
+                        if (amounts.bills > 0) {
+                            billsIOwe += 
+                                '<div class="flex justify-between items-center py-2 border-b border-red-100">' +
+                                '<span class="text-red-800 font-medium">' + person + '</span>' +
+                                '<span class="font-bold text-red-900 text-lg">$' + amounts.bills.toFixed(2) + '</span>' +
+                                '</div>';
+                        }
+                    }
+                    
+                    if (billsIOwe) {
+                        iOweSummary = 
+                            '<div class="card fade-in mb-4">' +
+                            '<div class="p-4 bg-red-50 border-l-4 border-red-500">' +
+                            '<div class="flex items-center gap-2 mb-3">' +
+                            '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
+                            '</svg>' +
+                            '<h3 class="font-bold text-red-900">❤️ Money You Owe (Bills)</h3>' +
+                            '</div>' +
+                            billsIOwe +
+                            '</div>' +
+                            '</div>';
+                    }
+                }
+                
+                return unpaidSummary + iOweSummary + '<div class="card fade-in">' +
                     '<div class="p-6 border-b flex justify-between items-center">' +
                     '<h2 class="text-xl font-bold">Bills & Payments</h2>' +
                     '<button data-action="show-modal" data-modal="bill" class="btn btn-primary">' +
@@ -4035,10 +4067,12 @@
 
 
                 let unpaidByPerson = {};
+                let iOweByPerson = {};
                 
                 if (this.currentUser) {
                     try {
                         unpaidByPerson = await storage.calculateUnpaidByPerson();
+                        iOweByPerson = await storage.calculateWhatIOwe();
                     } catch (error) {
                         console.log('Could not fetch unpaid amounts:', error);
                     }
@@ -4099,22 +4133,22 @@
                             '<div class="card fade-in mb-4">' +
 
 
-                            '<div class="p-4 bg-orange-50 border-l-4 border-orange-500">' +
+                            '<div class="p-4 bg-green-50 border-l-4 border-green-500">' +
 
 
                             '<div class="flex items-center gap-2 mb-3">' +
 
 
-                            '<svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
 
 
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
 
 
                             '</svg>' +
 
 
-                            '<h3 class="font-bold text-orange-900">Unpaid Expenses Summary</h3>' +
+                            '<h3 class="font-bold text-green-900">💚 Money Owed to You (Expenses)</h3>' +
 
 
                             '</div>' +
@@ -4269,7 +4303,37 @@
                     expensesContent = '<div class="space-y-3">' + expensesList + '</div>';
                 }
                 
-                return unpaidSummary + '<div class="card fade-in">' +
+                // Build Money You Owe summary (Expenses - Red)
+                let iOweSummary = '';
+                if (Object.keys(iOweByPerson).length > 0) {
+                    let expensesIOwe = '';
+                    for (const [person, amounts] of Object.entries(iOweByPerson)) {
+                        if (amounts.expenses > 0) {
+                            expensesIOwe += 
+                                '<div class="flex justify-between items-center py-2 border-b border-red-100">' +
+                                '<span class="text-red-800 font-medium">' + person + '</span>' +
+                                '<span class="font-bold text-red-900 text-lg">$' + amounts.expenses.toFixed(2) + '</span>' +
+                                '</div>';
+                        }
+                    }
+                    
+                    if (expensesIOwe) {
+                        iOweSummary = 
+                            '<div class="card fade-in mb-4">' +
+                            '<div class="p-4 bg-red-50 border-l-4 border-red-500">' +
+                            '<div class="flex items-center gap-2 mb-3">' +
+                            '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
+                            '</svg>' +
+                            '<h3 class="font-bold text-red-900">❤️ Money You Owe (Expenses)</h3>' +
+                            '</div>' +
+                            expensesIOwe +
+                            '</div>' +
+                            '</div>';
+                    }
+                }
+                
+                return unpaidSummary + iOweSummary + '<div class="card fade-in">' +
                     '<div class="p-6 border-b flex justify-between items-center">' +
                     '<h2 class="text-xl font-bold">Expenses</h2>' +
                     '<button data-action="show-modal" data-modal="expense" class="btn btn-primary">' +
