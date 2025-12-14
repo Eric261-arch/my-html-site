@@ -868,7 +868,8 @@
                         }
                     });
 
-                    return Object.values(conversations);
+                    // Sort by created_at descending (newest first)
+                    return Object.values(conversations).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
                 } catch (error) {
                     console.error('Get recent messages error:', error);
                     return [];
@@ -1790,7 +1791,13 @@
                             break;
                         
                         case 'show-modal':
-                            this.showModal(element.dataset.modal, element.dataset.id);
+                            await this.showModal(element.dataset.modal, element.dataset.id);
+                            // If opening notifications, update badge after modal opens
+                            if (element.dataset.modal === 'notifications') {
+                                setTimeout(async () => {
+                                    await this.updateNotificationBadge();
+                                }, 500);
+                            }
                             break;
                         
                         case 'close-modal':
@@ -1853,6 +1860,10 @@
                         
                         case 'open-chat':
                             await this.showModal('chat', element.dataset.partnerId);
+                            // Update badge after opening chat (marks messages as read)
+                            setTimeout(async () => {
+                                await this.updateNotificationBadge();
+                            }, 500);
                             break;
                     }
                 } catch (error) {
@@ -2201,12 +2212,35 @@
                         this.updateReceiptItemsDisplay();
                     }
                     
-                    // Scroll to bottom if chat modal
+                    // Scroll to bottom and set up auto-refresh if chat modal
                     if (modalType === 'chat') {
                         const chatMessages = document.getElementById('chat-messages');
                         if (chatMessages) {
                             chatMessages.scrollTop = chatMessages.scrollHeight;
                         }
+                        
+                        // Auto-refresh chat every 3 seconds
+                        this.chatRefreshInterval = setInterval(async () => {
+                            const currentScroll = chatMessages ? chatMessages.scrollTop : 0;
+                            const isAtBottom = chatMessages && (chatMessages.scrollHeight - chatMessages.scrollTop <= chatMessages.clientHeight + 50);
+                            
+                            // Refresh chat content
+                            const newContent = await this.getModalContent('chat', itemId);
+                            const modalDiv = modal.querySelector('.glass');
+                            if (modalDiv) {
+                                modalDiv.innerHTML = newContent;
+                                
+                                // Restore scroll position or go to bottom if user was at bottom
+                                const newChatMessages = document.getElementById('chat-messages');
+                                if (newChatMessages) {
+                                    if (isAtBottom) {
+                                        newChatMessages.scrollTop = newChatMessages.scrollHeight;
+                                    } else {
+                                        newChatMessages.scrollTop = currentScroll;
+                                    }
+                                }
+                            }
+                        }, 3000);
                     }
                 }, 100);
             }
@@ -2215,6 +2249,33 @@
                 const modal = document.querySelector('.fixed.inset-0');
                 if (modal) modal.remove();
                 this.receiptItems = [];
+                
+                // Clear chat refresh interval
+                if (this.chatRefreshInterval) {
+                    clearInterval(this.chatRefreshInterval);
+                    this.chatRefreshInterval = null;
+                }
+            }
+
+            async updateNotificationBadge() {
+                const unreadCount = await storage.getUnreadMessageCount();
+                const badge = document.querySelector('button[data-modal="notifications"] span');
+                const button = document.querySelector('button[data-modal="notifications"]');
+                
+                if (unreadCount > 0) {
+                    if (badge) {
+                        badge.textContent = unreadCount;
+                    } else if (button) {
+                        const newBadge = document.createElement('span');
+                        newBadge.className = 'absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center';
+                        newBadge.textContent = unreadCount;
+                        button.insertBefore(newBadge, button.firstChild);
+                    }
+                } else {
+                    if (badge) {
+                        badge.remove();
+                    }
+                }
             }
 
             async getModalContent(type, itemId) {
