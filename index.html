@@ -4364,13 +4364,13 @@
                 } else {
                     let historyList = '';
                     for (const item of history) {
-                        const isShared = item.is_shared || false;
+                        const isShared = item.is_shared || (item.bill_shares && item.bill_shares.length > 0);
                         const userAmount = item.user_share || item.amount;
                         const isExpense = item.category === 'expense';
                         
                         // Get shared partner names from bill_shares
                         let sharedWithNames = [];
-                        if (isShared && item.bill_shares && Array.isArray(item.bill_shares)) {
+                        if (item.bill_shares && Array.isArray(item.bill_shares) && item.bill_shares.length > 0) {
                             item.bill_shares.forEach(share => {
                                 // Skip current user
                                 if (share.user_id !== this.currentUser.id) {
@@ -4404,11 +4404,11 @@
                         
                         // Build shared with info
                         let sharedInfo = '';
-                        if (isShared && sharedWithNames.length > 0) {
+                        if (sharedWithNames.length > 0) {
                             const partnerText = sharedWithNames.length === 1 ? sharedWithNames[0] : 
                                                sharedWithNames.length === 2 ? sharedWithNames.join(' & ') :
                                                sharedWithNames.slice(0, -1).join(', ') + ' & ' + sharedWithNames[sharedWithNames.length - 1];
-                            sharedInfo = '<p class="text-xs text-blue-600 mt-1">👥 Shared with ' + partnerText + '</p>';
+                            sharedInfo = '<p class="text-xs text-blue-600 mt-1 font-medium">👥 Shared with ' + partnerText + '</p>';
                         }
                         
                         const totalInfo = (isShared && item.amount !== userAmount) ? 
