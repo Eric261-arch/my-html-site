@@ -3415,7 +3415,7 @@
                 } else if (this.activeTab === 'expenses') {
                     mainContent = await this.renderExpensesTab(expenses);
                 } else if (this.activeTab === 'history') {
-                    mainContent = this.renderHistoryTab(history);
+                    mainContent = await this.renderHistoryTab(history);
                 }
                 
                 return '<div class="min-h-screen bg-gray-50">' +
@@ -4347,8 +4347,11 @@
                     '</div>';
             }
 
-            renderHistoryTab(history) {
+            async renderHistoryTab(history) {
                 let historyContent = '';
+                
+                // Get connections for shared bill/expense info
+                const connections = await storage.getUserConnections();
                 
                 if (history.length === 0) {
                     historyContent = '<div class="text-center py-12">' +
@@ -4364,6 +4367,17 @@
                         const isShared = item.is_shared || false;
                         const userAmount = item.user_share || item.amount;
                         const isExpense = item.category === 'expense';
+                        
+                        // Get shared partner names
+                        let sharedWithNames = [];
+                        if (isShared && item.shared_with && Array.isArray(item.shared_with)) {
+                            item.shared_with.forEach(partnerId => {
+                                const partner = connections.find(c => c.id === partnerId);
+                                if (partner) {
+                                    sharedWithNames.push(partner.name);
+                                }
+                            });
+                        }
                         
                         // Parse receipt items if they exist (for expenses)
                         let receiptItems = [];
@@ -4385,6 +4399,15 @@
                             indicators.push('<span class="personal-indicator">Personal</span>');
                         }
                         
+                        // Build shared with info
+                        let sharedInfo = '';
+                        if (isShared && sharedWithNames.length > 0) {
+                            const partnerText = sharedWithNames.length === 1 ? sharedWithNames[0] : 
+                                               sharedWithNames.length === 2 ? sharedWithNames.join(' & ') :
+                                               sharedWithNames.slice(0, -1).join(', ') + ' & ' + sharedWithNames[sharedWithNames.length - 1];
+                            sharedInfo = '<p class="text-xs text-blue-600 mt-1">👥 Shared with ' + partnerText + '</p>';
+                        }
+                        
                         const totalInfo = (isShared && item.amount !== userAmount) ? 
                             '<p class="text-xs text-gray-500">Total: $' + item.amount.toFixed(2) + '</p>' : '';
                         
@@ -4399,7 +4422,7 @@
                             receiptItemsHTML += '</ul></div>';
                         }
                         
-                        historyList += '<div class="p-4 bg-gray-50 rounded-lg">' +
+                        historyList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
                             '<div class="flex items-center justify-between mb-3">' +
                             '<div class="flex items-center space-x-4 flex-1">' +
                             '<div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">' +
@@ -4416,6 +4439,7 @@
                             (isExpense ? 'Date: ' : 'Due: ') + 
                             new Date(item.due_date).toLocaleDateString() + 
                             (isExpense ? '' : ' • ' + item.category) + '</p>' +
+                            sharedInfo +
                             receiptItemsHTML +
                             '</div>' +
                             '</div>' +
