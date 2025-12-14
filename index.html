@@ -4633,21 +4633,25 @@
             const percentageOthersList = document.getElementById('percentage-others-list');
             
             if (percentageOthersList) {
-                let othersHTML = '';
-                selectedPeople.forEach(checkbox => {
-                    const label = checkbox.closest('label');
-                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                    const userId = checkbox.value;
-                    othersHTML += 
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">' + name + ':</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateExpenseSplitPreview()">' +
-                        '<span class="text-sm">%</span>' +
-                        '</div>' +
-                        '</div>';
-                });
-                percentageOthersList.innerHTML = othersHTML;
+                // Only regenerate if the number of inputs doesn't match
+                const existingInputs = percentageOthersList.querySelectorAll('input[type="number"]');
+                if (existingInputs.length !== selectedPeople.length) {
+                    let othersHTML = '';
+                    selectedPeople.forEach(checkbox => {
+                        const label = checkbox.closest('label');
+                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                        const userId = checkbox.value;
+                        othersHTML += 
+                            '<div class="flex justify-between items-center">' +
+                            '<span class="text-sm">' + name + ':</span>' +
+                            '<div class="flex items-center space-x-1">' +
+                            '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateExpenseSplitPreview()">' +
+                            '<span class="text-sm">%</span>' +
+                            '</div>' +
+                            '</div>';
+                    });
+                    percentageOthersList.innerHTML = othersHTML;
+                }
             }
             
             // Calculate total percentage
@@ -4677,21 +4681,25 @@
             const customOthersList = document.getElementById('custom-others-list');
             
             if (customOthersList) {
-                let othersHTML = '';
-                selectedPeople.forEach(checkbox => {
-                    const label = checkbox.closest('label');
-                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                    const userId = checkbox.value;
-                    othersHTML += 
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">' + name + ':</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<span class="text-sm">$</span>' +
-                        '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateExpenseSplitPreview()">' +
-                        '</div>' +
-                        '</div>';
-                });
-                customOthersList.innerHTML = othersHTML;
+                // Only regenerate if the number of inputs doesn't match
+                const existingInputs = customOthersList.querySelectorAll('input[type="number"]');
+                if (existingInputs.length !== selectedPeople.length) {
+                    let othersHTML = '';
+                    selectedPeople.forEach(checkbox => {
+                        const label = checkbox.closest('label');
+                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                        const userId = checkbox.value;
+                        othersHTML += 
+                            '<div class="flex justify-between items-center">' +
+                            '<span class="text-sm">' + name + ':</span>' +
+                            '<div class="flex items-center space-x-1">' +
+                            '<span class="text-sm">$</span>' +
+                            '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateExpenseSplitPreview()">' +
+                            '</div>' +
+                            '</div>';
+                    });
+                    customOthersList.innerHTML = othersHTML;
+                }
             }
             
             // Calculate total custom amounts
@@ -4787,21 +4795,25 @@
             const percentageOthersList = document.getElementById('percentage-others-list-bill');
             
             if (percentageOthersList) {
-                let othersHTML = '';
-                selectedPeople.forEach(checkbox => {
-                    const label = checkbox.closest('label');
-                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                    const userId = checkbox.value;
-                    othersHTML += 
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">' + name + ':</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateBillSplitPreview()">' +
-                        '<span class="text-sm">%</span>' +
-                        '</div>' +
-                        '</div>';
-                });
-                percentageOthersList.innerHTML = othersHTML;
+                // Only regenerate if the number of inputs doesn't match
+                const existingInputs = percentageOthersList.querySelectorAll('input[type="number"]');
+                if (existingInputs.length !== selectedPeople.length) {
+                    let othersHTML = '';
+                    selectedPeople.forEach(checkbox => {
+                        const label = checkbox.closest('label');
+                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                        const userId = checkbox.value;
+                        othersHTML += 
+                            '<div class="flex justify-between items-center">' +
+                            '<span class="text-sm">' + name + ':</span>' +
+                            '<div class="flex items-center space-x-1">' +
+                            '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateBillSplitPreview()">' +
+                            '<span class="text-sm">%</span>' +
+                            '</div>' +
+                            '</div>';
+                    });
+                    percentageOthersList.innerHTML = othersHTML;
+                }
             }
             
             const userPercentage = parseFloat(document.querySelector('input[name="userPercentage"]')?.value || 0);
@@ -4830,21 +4842,25 @@
             const customOthersList = document.getElementById('custom-others-list-bill');
             
             if (customOthersList) {
-                let othersHTML = '';
-                selectedPeople.forEach(checkbox => {
-                    const label = checkbox.closest('label');
-                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                    const userId = checkbox.value;
-                    othersHTML += 
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">' + name + ':</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<span class="text-sm">$</span>' +
-                        '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateBillSplitPreview()">' +
-                        '</div>' +
-                        '</div>';
-                });
-                customOthersList.innerHTML = othersHTML;
+                // Only regenerate if the number of inputs doesn't match
+                const existingInputs = customOthersList.querySelectorAll('input[type="number"]');
+                if (existingInputs.length !== selectedPeople.length) {
+                    let othersHTML = '';
+                    selectedPeople.forEach(checkbox => {
+                        const label = checkbox.closest('label');
+                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
+                        const userId = checkbox.value;
+                        othersHTML += 
+                            '<div class="flex justify-between items-center">' +
+                            '<span class="text-sm">' + name + ':</span>' +
+                            '<div class="flex items-center space-x-1">' +
+                            '<span class="text-sm">$</span>' +
+                            '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateBillSplitPreview()">' +
+                            '</div>' +
+                            '</div>';
+                    });
+                    customOthersList.innerHTML = othersHTML;
+                }
             }
             
             const userAmount = parseFloat(document.querySelector('input[name="userAmount"]')?.value || 0);
