@@ -2219,25 +2219,65 @@
                             chatMessages.scrollTop = chatMessages.scrollHeight;
                         }
                         
-                        // Auto-refresh chat every 3 seconds
+                        // Auto-refresh chat messages only (not the whole modal) every 3 seconds
                         this.chatRefreshInterval = setInterval(async () => {
-                            const currentScroll = chatMessages ? chatMessages.scrollTop : 0;
-                            const isAtBottom = chatMessages && (chatMessages.scrollHeight - chatMessages.scrollTop <= chatMessages.clientHeight + 50);
+                            const currentChatMessages = document.getElementById('chat-messages');
+                            if (!currentChatMessages) return; // Chat was closed
                             
-                            // Refresh chat content
-                            const newContent = await this.getModalContent('chat', itemId);
-                            const modalDiv = modal.querySelector('.glass');
-                            if (modalDiv) {
-                                modalDiv.innerHTML = newContent;
-                                
-                                // Restore scroll position or go to bottom if user was at bottom
-                                const newChatMessages = document.getElementById('chat-messages');
-                                if (newChatMessages) {
-                                    if (isAtBottom) {
-                                        newChatMessages.scrollTop = newChatMessages.scrollHeight;
+                            const currentScroll = currentChatMessages.scrollTop;
+                            const isAtBottom = currentChatMessages.scrollHeight - currentChatMessages.scrollTop <= currentChatMessages.clientHeight + 50;
+                            
+                            // Get updated messages
+                            const messages = await storage.getConversation(itemId);
+                            
+                            // Rebuild messages HTML
+                            let messagesHTML = '';
+                            if (messages.length === 0) {
+                                messagesHTML = '<div class="text-center py-8 text-gray-400">' +
+                                    '<svg class="w-16 h-16 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />' +
+                                    '</svg>' +
+                                    '<p class="text-sm">No messages yet</p>' +
+                                    '<p class="text-xs mt-1">Start the conversation!</p>' +
+                                    '</div>';
+                            } else {
+                                messages.forEach(msg => {
+                                    const isFromMe = msg.from_user_id === this.currentUser.id;
+                                    const timestamp = window.formatMessageTimestamp(msg.created_at);
+                                    
+                                    if (isFromMe) {
+                                        messagesHTML += 
+                                            '<div class="flex justify-end mb-3">' +
+                                            '<div class="max-w-xs lg:max-w-md">' +
+                                            '<div class="bg-purple-600 text-white rounded-lg rounded-tr-none px-4 py-2">' +
+                                            '<p class="text-sm">' + msg.message_text + '</p>' +
+                                            '</div>' +
+                                            '<p class="text-xs text-gray-400 mt-1 text-right">' + timestamp + '</p>' +
+                                            '</div>' +
+                                            '</div>';
                                     } else {
-                                        newChatMessages.scrollTop = currentScroll;
+                                        messagesHTML += 
+                                            '<div class="flex justify-start mb-3">' +
+                                            '<div class="max-w-xs lg:max-w-md">' +
+                                            '<div class="bg-gray-200 text-gray-800 rounded-lg rounded-tl-none px-4 py-2">' +
+                                            '<p class="text-sm">' + msg.message_text + '</p>' +
+                                            '</div>' +
+                                            '<p class="text-xs text-gray-400 mt-1">' + timestamp + '</p>' +
+                                            '</div>' +
+                                            '</div>';
                                     }
+                                });
+                            }
+                            
+                            // Update only the messages container
+                            currentChatMessages.innerHTML = messagesHTML;
+                            
+                            // Restore scroll position or go to bottom if user was at bottom
+                            if (isAtBottom) {
+                                currentChatMessages.scrollTop = currentChatMessages.scrollHeight;
+                            } else {
+                                currentChatMessages.scrollTop = currentScroll;
+                            }
                                 }
                             }
                         }, 3000);
