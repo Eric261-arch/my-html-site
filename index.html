@@ -1611,6 +1611,60 @@
                 }
             }
 
+            // Calculate what the current user owes to others
+            async calculateWhatIOwe() {
+                try {
+                    const bills = await this.getUserBills();
+                    const expenses = await this.getUserExpenses();
+                    const allItems = [...bills, ...expenses];
+
+                    const iOweByPerson = {};
+
+                    for (const item of allItems) {
+                        if (item.is_shared && item.bill_shares) {
+                            // Find the current user's share
+                            const myShare = item.bill_shares.find(share => share.user_id === this.user.id);
+                            
+                            // If current user hasn't paid their share
+                            if (myShare && !myShare.paid) {
+                                // Find the creator of this bill/expense
+                                const creatorId = item.user_id;
+                                
+                                // Get creator details
+                                const { data: creator } = await supabase
+                                    .from('users')
+                                    .select('name')
+                                    .eq('id', creatorId)
+                                    .single();
+
+                                const creatorName = creator?.name || 'Unknown';
+                                
+                                if (!iOweByPerson[creatorName]) {
+                                    iOweByPerson[creatorName] = {
+                                        total: 0,
+                                        bills: 0,
+                                        expenses: 0,
+                                        userId: creatorId
+                                    };
+                                }
+                                
+                                iOweByPerson[creatorName].total += myShare.amount;
+                                if (item.category === 'expense') {
+                                    iOweByPerson[creatorName].expenses += myShare.amount;
+                                } else {
+                                    iOweByPerson[creatorName].bills += myShare.amount;
+                                }
+                            }
+                        }
+                    }
+
+                    return iOweByPerson;
+                } catch (error) {
+                    console.error('Calculate what I owe error:', error);
+                    return {};
+                }
+            }
+
             // Fallback method for calculating unpaid amounts (client-side)
             async calculateUnpaidByPersonFallback() {
                 try {
@@ -3412,11 +3466,19 @@
                 // Calculate unpaid amounts (only if user is logged in)
                 let totalUnpaid = 0;
                 let unpaidByPerson = {};
+                let totalIOwe = 0;
+                let iOweByPerson = {};
                 
                 if (this.currentUser) {
                     try {
                         totalUnpaid = await storage.getTotalUnpaidShared();
                         unpaidByPerson = await storage.calculateUnpaidByPerson();
+                        iOweByPerson = await storage.calculateWhatIOwe();
+                        
+                        // Calculate total I owe
+                        for (const [person, amounts] of Object.entries(iOweByPerson)) {
+                            totalIOwe += amounts.total;
+                        }
                     } catch (error) {
                         console.log('Could not fetch unpaid amounts:', error);
                     }
@@ -3498,6 +3560,38 @@
                         '</div>';
                 }
 
+                // ADDED: Money You Owe card
+                let iOweCard = '';
+                if (totalIOwe > 0) {
+                    let personBreakdown = '';
+                    for (const [person, amounts] of Object.entries(iOweByPerson)) {
+                        personBreakdown += 
+                            '<div class="flex justify-between items-center py-1">' +
+                            '<span class="text-sm text-gray-600">' + person + '</span>' +
+                            '<span class="text-sm font-semibold text-gray-800">$' + amounts.total.toFixed(2) + '</span>' +
+                            '</div>';
+                    }
+                    
+                    iOweCard = 
+                        '<div class="card fade-in mb-6">' +
+                        '<div class="p-6 bg-gradient-to-r from-red-50 to-pink-50">' +
+                        '<div class="flex items-center justify-between mb-4">' +
+                        '<div>' +
+                        '<h3 class="text-lg font-semibold text-gray-800">Money You Owe</h3>' +
+                        '<p class="text-sm text-gray-600">Total unpaid bills & expenses</p>' +
+                        '</div>' +
+                        '<svg class="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
+                        '</svg>' +
+                        '</div>' +
+                        '<p class="text-4xl font-bold text-red-600 mb-4">$' + totalIOwe.toFixed(2) + '</p>' +
+                        '<div class="border-t border-red-200 pt-3">' +
+                        personBreakdown +
+                        '</div>' +
+                        '</div>' +
+                        '</div>';
+                }
+
                                 // ADDED: Partners Connected section for dashboard
                 let partnersSection = '';
                 if (connections.length > 0) {
@@ -3568,6 +3662,7 @@
                 return '<div class="space-y-6 fade-in">' +
                     notificationsSection +
                     unpaidCard +
+                    iOweCard +
                     partnersSection +
                     '<div class="grid-responsive">' +
                     '<div class="card card-mobile">' +
