@@ -2477,15 +2477,15 @@
 
             viewAttachment(imageData, fileName) {
                 const modal = document.createElement('div');
-                modal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50';
-                modal.innerHTML = '<div class="relative max-w-4xl max-h-screen">' +
-                    '<button data-action="close-attachment" class="absolute -top-10 right-0 text-white hover:text-gray-300">' +
-                    '<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                modal.className = 'fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50';
+                modal.innerHTML = '<div class="relative w-full h-full flex flex-col items-center justify-center">' +
+                    '<button data-action="close-attachment" class="absolute top-4 right-4 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-full p-3 transition z-10" style="min-width: 48px; min-height: 48px;">' +
+                    '<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />' +
                     '</svg>' +
                     '</button>' +
-                    '<img src="' + imageData + '" alt="' + fileName + '" class="max-w-full max-h-screen rounded shadow-2xl">' +
-                    '<p class="text-white text-center mt-2">' + fileName + '</p>' +
+                    '<img src="' + imageData + '" alt="' + fileName + '" class="max-w-full max-h-full object-contain rounded shadow-2xl">' +
+                    '<p class="text-white text-center mt-4 px-4">' + fileName + '</p>' +
                     '</div>';
                 document.body.appendChild(modal);
                 
