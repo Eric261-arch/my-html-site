@@ -10,6 +10,38 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Inline Service Worker for mobile notifications
+        if ('serviceWorker' in navigator) {
+            // Create service worker as a blob URL
+            const swCode = `
+                self.addEventListener('install', (event) => {
+                    console.log('Service Worker: Installed');
+                    self.skipWaiting();
+                });
+
+                self.addEventListener('activate', (event) => {
+                    console.log('Service Worker: Activated');
+                    event.waitUntil(self.clients.claim());
+                });
+
+                self.addEventListener('notificationclick', (event) => {
+                    console.log('Notification clicked');
+                    event.notification.close();
+                    event.waitUntil(
+                        clients.openWindow('/')
+                    );
+                });
+            `;
+            
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+            
+            navigator.serviceWorker.register(swUrl)
+                .then(reg => console.log('Service Worker registered:', reg))
+                .catch(err => console.error('Service Worker registration failed:', err));
+        }
+    </script>
     <style>
         * { 
             margin: 0; 
@@ -1877,13 +1909,14 @@
             }
 
             async init() {
-                // Register service worker for mobile notifications
+                // Get the service worker registration (registered in head script)
                 if ('serviceWorker' in navigator) {
                     try {
-                        this.serviceWorkerRegistration = await navigator.serviceWorker.register('/service-worker.js');
-                        console.log('Service Worker registered:', this.serviceWorkerRegistration);
+                        // Wait for service worker to be ready
+                        this.serviceWorkerRegistration = await navigator.serviceWorker.ready;
+                        console.log('Service Worker ready:', this.serviceWorkerRegistration);
                     } catch (error) {
-                        console.error('Service Worker registration failed:', error);
+                        console.error('Service Worker error:', error);
                     }
                 }
                 
@@ -2098,12 +2131,11 @@
                     return null;
                 }
             }
-                showBrowserNotification(title, body) {
-                    this.debugLog('=== showBrowserNotification called ===');
-                    this.debugLog('Title: ' + title);
-                    this.debugLog('Body: ' + body);
-                    this.debugLog('Notification supported? ' + ('Notification' in window));
-                    this.debugLog('Permission: ' + Notification.permission);
+                this.debugLog('=== showBrowserNotification called ===');
+                this.debugLog('Title: ' + title);
+                this.debugLog('Body: ' + body);
+                this.debugLog('Notification supported? ' + ('Notification' in window));
+                this.debugLog('Permission: ' + Notification.permission);
                 
                 console.log('=== showBrowserNotification called ===');
                 console.log('Title:', title);
