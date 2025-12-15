@@ -2098,11 +2098,12 @@
                     return null;
                 }
             }
-                this.debugLog('=== showBrowserNotification called ===');
-                this.debugLog('Title: ' + title);
-                this.debugLog('Body: ' + body);
-                this.debugLog('Notification supported? ' + ('Notification' in window));
-                this.debugLog('Permission: ' + Notification.permission);
+                showBrowserNotification(title, body) {
+                    this.debugLog('=== showBrowserNotification called ===');
+                    this.debugLog('Title: ' + title);
+                    this.debugLog('Body: ' + body);
+                    this.debugLog('Notification supported? ' + ('Notification' in window));
+                    this.debugLog('Permission: ' + Notification.permission);
                 
                 console.log('=== showBrowserNotification called ===');
                 console.log('Title:', title);
