@@ -1931,8 +1931,12 @@
                 const notification = new Notification(title, {
                     body: body,
                     icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="75" font-size="75">💰</text></svg>',
+                    badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="75" font-size="75">💬</text></svg>',
                     tag: data.tag || 'budget-mate',
-                    requireInteraction: false
+                    requireInteraction: false,
+                    vibrate: [200, 100, 200], // Vibration pattern for mobile
+                    silent: false,
+                    renotify: true
                 });
 
                 notification.onclick = () => {
@@ -1942,18 +1946,37 @@
                     }
                     notification.close();
                 };
+                
+                // Additional mobile vibration (some browsers need this)
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200]);
+                }
+                
+                // Play a sound (optional)
+                try {
+                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYID2Aq7eCQTwocDbjs67JYGAg+ltryxHMlBSp+zPDckUAJFl602OytVxUJRZzd8L5uIQUmfsrw3ZJACRZftNjsrVcVCUSc3fC+biEFJn7K8N2SQAkWX7TY7K1XFQlEnN3wvm4hBSZ+yvDdkkAJFl+02OytVxUJRJzd8L5uIQUmfsrw3ZJACRZftNjsrVcVCUSc3fC+biEFJn7K8N2SQAkWX7TY7K1XFQlEnN3wvm4hBSZ+yvDdkkAJFl+02OytVxUJRJzd8L5uIQUmfsrw3ZJACRZftNjsrVcVCUSc3fC+biEFJn7K8N2SQAkWX7TY7K1XFQlEnN3wvm4hBSZ+yvDdkkAJFl+02OytVxUJRJzd8L5uIQUmfsrw3ZJACRZftNjsrVcVCUSc3fC+biEFJn7K8N2SQAkWX7TY7K1XFQlEnN3wvm4hBSZ+yvDdkkAJFl+02OytVxUJRJzd8L5uIQUmfsrw3ZJACRZftNjsrVcVCUSc3fC+biEFJn7K8N2SQAkWX7TY7K1XFQlEnN3wvm4hBSZ+yvDdkkAJFl+02OytVxUJRJzd8L5uIQUmfsrw3ZJACRZftNjsrVcVCUSc3fC+biEFJn7K8N2SQAkWX7TY7K1XFQlEnN3wvm4hBSZ+yvDdkkA=');
+                    audio.volume = 0.3;
+                    audio.play().catch(() => {}); // Ignore errors
+                } catch (e) {
+                    // Sound failed, no big deal
+                }
             }
 
             async startNotificationPolling() {
+                console.log('Starting notification polling...');
                 this.notificationInterval = setInterval(async () => {
                     if (!this.currentUser) return;
 
                     try {
                         const unreadCount = await storage.getUnreadMessageCount();
+                        console.log('Checking notifications - Unread:', unreadCount, 'Last:', this.lastUnreadCount);
+                        
                         if (unreadCount > this.lastUnreadCount) {
+                            console.log('New messages detected!');
                             const messages = await storage.getRecentMessages();
                             if (messages.length > 0) {
                                 const msg = messages[0];
+                                console.log('Showing notification for:', msg);
                                 this.showBrowserNotification(
                                     `💬 ${msg.sender_name}`,
                                     msg.content.substring(0, 100),
@@ -1965,7 +1988,36 @@
                     } catch (error) {
                         console.error('Notification polling error:', error);
                     }
-                }, 30000); // Check every 30 seconds
+                }, 10000); // Check every 10 seconds (changed from 30)
+                
+                // Also check immediately
+                setTimeout(() => {
+                    this.checkNotificationsNow();
+                }, 2000);
+            }
+
+            async checkNotificationsNow() {
+                if (!this.currentUser) return;
+                
+                try {
+                    const unreadCount = await storage.getUnreadMessageCount();
+                    console.log('Immediate check - Unread:', unreadCount, 'Last:', this.lastUnreadCount);
+                    
+                    if (unreadCount > this.lastUnreadCount) {
+                        const messages = await storage.getRecentMessages();
+                        if (messages.length > 0) {
+                            const msg = messages[0];
+                            this.showBrowserNotification(
+                                `💬 ${msg.sender_name}`,
+                                msg.content.substring(0, 100),
+                                { type: 'message', partnerId: msg.sender_id, tag: 'msg-' + msg.id }
+                            );
+                        }
+                    }
+                    this.lastUnreadCount = unreadCount;
+                } catch (error) {
+                    console.error('Immediate notification check error:', error);
+                }
             }
 
             stopNotificationPolling() {
