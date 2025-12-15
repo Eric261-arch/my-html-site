@@ -1870,9 +1870,6 @@
                 this.privateMode = false;
                 this.loading = false;
                 this.receiptItems = [];
-                this.lastUnreadCount = 0;
-                this.notificationInterval = null;
-                this.serviceWorkerRegistration = null;
                 this.init();
             }
 
@@ -1889,198 +1886,12 @@
                 this.render();
                 this.attachEventListeners();
                 window.app = this;
-                
-                // Setup notifications if user is logged in
-                if (this.currentUser) {
-                    await this.requestNotificationPermission();
-                    this.startNotificationPolling();
-                }
             }
 
             handleSignOut() {
-                this.stopNotificationPolling();
                 this.currentUser = null;
                 this.currentView = 'login';
                 this.render();
-            }
-
-            // Notification methods
-            async requestNotificationPermission() {
-                console.log('=== Requesting notification permission ===');
-                
-                if (!('Notification' in window)) {
-                    console.log('❌ Browser does not support notifications');
-                    alert('⚠️ Your browser does not support notifications');
-                    return false;
-                }
-
-                console.log('Current permission:', Notification.permission);
-
-                if (Notification.permission === 'granted') {
-                    console.log('✅ Permission already granted');
-                    return true;
-                }
-
-                if (Notification.permission === 'denied') {
-                    console.log('❌ Permission denied');
-                    alert('⚠️ Notifications are blocked. To enable:\n\n1. Tap the lock icon in address bar\n2. Find "Notifications"\n3. Change to "Allow"');
-                    return false;
-                }
-
-                // Permission is 'default' - ask user
-                console.log('Requesting permission from user...');
-                try {
-                    const permission = await Notification.requestPermission();
-                    console.log('Permission result:', permission);
-                    
-                    if (permission === 'granted') {
-                        console.log('✅ Permission granted!');
-                        alert('✅ Notifications enabled! You\'ll get alerts for new messages.');
-                        this.showBrowserNotification('Budget Mate', 'Notifications are working! 🎉');
-                        return true;
-                    } else {
-                        console.log('❌ Permission denied by user');
-                        alert('⚠️ Notifications blocked. You won\'t receive alerts for new messages.');
-                        return false;
-                    }
-                } catch (error) {
-                    console.error('Error requesting permission:', error);
-                    alert('❌ Error requesting notification permission: ' + error.message);
-                    return false;
-                }
-            }
-
-            async showBrowserNotification(title, body, data = {}) {
-                this.debugLog('=== showBrowserNotification called ===');
-                this.debugLog('Title: ' + title);
-                this.debugLog('Body: ' + body);
-                this.debugLog('Notification supported? ' + ('Notification' in window));
-                this.debugLog('Permission: ' + Notification.permission);
-                
-                console.log('=== showBrowserNotification called ===');
-                console.log('Title:', title);
-                console.log('Body:', body);
-                
-                if (!('Notification' in window)) {
-                    this.debugLog('❌ Browser does not support Notification API');
-                    return null;
-                }
-                
-                if (Notification.permission !== 'granted') {
-                    this.debugLog('❌ Permission: ' + Notification.permission + ' (need: granted)');
-                    return null;
-                }
-                
-                try {
-                    this.debugLog('Creating notification (simple mode)...');
-                    
-                    // Simple notification without advanced options for mobile compatibility
-                    const notification = new Notification(title, {
-                        body: body,
-                        icon: '/favicon.ico',
-                        tag: data.tag || 'budget-mate'
-                    });
-                    
-                    this.debugLog('✅ Notification created');
-                    console.log('✅ Notification created');
-
-                    notification.onclick = () => {
-                        window.focus();
-                        notification.close();
-                    };
-                    
-                    // Vibrate separately (more reliable on mobile)
-                    if (navigator.vibrate) {
-                        this.debugLog('Triggering vibration...');
-                        navigator.vibrate([200, 100, 200]);
-                    }
-                    
-                    return notification;
-                } catch (error) {
-                    this.debugLog('❌ Error: ' + error.message);
-                    console.error('❌ Error creating notification:', error);
-                    
-                    // Last resort: Use alert for testing
-                    if (confirm('⚠️ Notification failed. Show as alert instead?\n\n' + title + '\n' + body)) {
-                        return null;
-                    }
-                    return null;
-                }
-            }
-
-            async startNotificationPolling() {
-                console.log('Starting notification polling...');
-                this.notificationInterval = setInterval(async () => {
-                    if (!this.currentUser) return;
-
-                    try {
-                        const unreadCount = await storage.getUnreadMessageCount();
-                        console.log('Checking notifications - Unread:', unreadCount, 'Last:', this.lastUnreadCount);
-                        
-                        if (unreadCount > this.lastUnreadCount) {
-                            console.log('New messages detected!');
-                            const messages = await storage.getRecentMessages();
-                            if (messages.length > 0) {
-                                const msg = messages[0];
-                                console.log('Showing notification for:', msg);
-                                this.showBrowserNotification(
-                                    `💬 ${msg.sender_name}`,
-                                    msg.content.substring(0, 100),
-                                    { type: 'message', partnerId: msg.sender_id, tag: 'msg-' + msg.id }
-                                );
-                            }
-                        }
-                        this.lastUnreadCount = unreadCount;
-                    } catch (error) {
-                        console.error('Notification polling error:', error);
-                    }
-                }, 10000); // Check every 10 seconds (changed from 30)
-                
-                // Also check immediately
-                setTimeout(() => {
-                    this.checkNotificationsNow();
-                }, 2000);
-            }
-
-            async checkNotificationsNow() {
-                if (!this.currentUser) return;
-                
-                try {
-                    const unreadCount = await storage.getUnreadMessageCount();
-                    console.log('Immediate check - Unread:', unreadCount, 'Last:', this.lastUnreadCount);
-                    
-                    if (unreadCount > this.lastUnreadCount) {
-                        const messages = await storage.getRecentMessages();
-                        if (messages.length > 0) {
-                            const msg = messages[0];
-                            this.showBrowserNotification(
-                                `💬 ${msg.sender_name}`,
-                                msg.content.substring(0, 100),
-                                { type: 'message', partnerId: msg.sender_id, tag: 'msg-' + msg.id }
-                            );
-                        }
-                    }
-                    this.lastUnreadCount = unreadCount;
-                } catch (error) {
-                    console.error('Immediate notification check error:', error);
-                }
-            }
-
-            stopNotificationPolling() {
-                if (this.notificationInterval) {
-                    clearInterval(this.notificationInterval);
-                    this.notificationInterval = null;
-                }
-            }
-
-            debugLog(message) {
-                console.log(message);
-                const debugDiv = document.getElementById('notification-debug');
-                if (debugDiv) {
-                    const timestamp = new Date().toLocaleTimeString();
-                    debugDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
-                    debugDiv.scrollTop = debugDiv.scrollHeight;
-                }
             }
 
             attachEventListeners() {
@@ -2120,37 +1931,6 @@
                     switch(action) {
                         case 'logout':
                             await storage.signOut();
-                            break;
-                        
-                        case 'test-notification':
-                            console.log('Test notification button clicked');
-                            const testResult = this.showBrowserNotification('Test Notification', 'If you see this, notifications are working! 🎉');
-                            if (testResult) {
-                                alert('✅ Test notification sent! Check your notification tray.');
-                            } else {
-                                alert('❌ Could not send notification. Check console for details.');
-                            }
-                            break;
-                        
-                        case 'request-notification-permission':
-                            console.log('Manual permission request clicked');
-                            const permissionGranted = await this.requestNotificationPermission();
-                            if (permissionGranted) {
-                                alert('✅ Notifications enabled! Now try the Test button.');
-                            }
-                            break;
-                        
-                        case 'show-debug-log':
-                            const debugDiv = document.getElementById('notification-debug');
-                            if (debugDiv) {
-                                if (debugDiv.style.display === 'none') {
-                                    debugDiv.style.display = 'block';
-                                    element.textContent = 'Hide Debug Log';
-                                } else {
-                                    debugDiv.style.display = 'none';
-                                    element.textContent = 'Show Debug Log';
-                                }
-                            }
                             break;
                         
                         case 'toggle-private':
@@ -3989,16 +3769,6 @@
                     '<span class="text-sm font-medium">Notifications</span>' +
                     '</button>' +
                     '</div>' +
-                    '<div class="grid grid-cols-2 gap-4 mt-4">' +
-                    '<button data-action="request-notification-permission" class="card card-mobile hover:shadow-lg transition py-3 bg-green-50 border-2 border-green-300 text-green-700 font-medium">' +
-                    '✅ Enable Notifications' +
-                    '</button>' +
-                    '<button data-action="test-notification" class="card card-mobile hover:shadow-lg transition py-3 bg-purple-50 border-2 border-purple-300 text-purple-700 font-medium">' +
-                    '🔔 Test Notification' +
-                    '</button>' +
-                    '</div>' +
-                    '<div id="notification-debug" class="mt-4 p-3 bg-gray-100 rounded-lg text-xs font-mono overflow-auto max-h-40" style="display:none;"></div>' +
-                    '<button data-action="show-debug-log" class="mt-2 text-sm text-gray-600 underline w-full">Show Debug Log</button>' +
                     '</div>';
             }
 
