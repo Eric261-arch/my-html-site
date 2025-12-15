@@ -1905,24 +1905,48 @@
 
             // Notification methods
             async requestNotificationPermission() {
+                console.log('=== Requesting notification permission ===');
+                
                 if (!('Notification' in window)) {
-                    console.log('Browser does not support notifications');
+                    console.log('❌ Browser does not support notifications');
+                    alert('⚠️ Your browser does not support notifications');
                     return false;
                 }
 
+                console.log('Current permission:', Notification.permission);
+
                 if (Notification.permission === 'granted') {
+                    console.log('✅ Permission already granted');
                     return true;
                 }
 
-                if (Notification.permission !== 'denied') {
-                    const permission = await Notification.requestPermission();
-                    if (permission === 'granted') {
-                        this.showBrowserNotification('Budget Mate', 'Notifications enabled! 🎉');
-                        return true;
-                    }
+                if (Notification.permission === 'denied') {
+                    console.log('❌ Permission denied');
+                    alert('⚠️ Notifications are blocked. To enable:\n\n1. Tap the lock icon in address bar\n2. Find "Notifications"\n3. Change to "Allow"');
+                    return false;
                 }
 
-                return false;
+                // Permission is 'default' - ask user
+                console.log('Requesting permission from user...');
+                try {
+                    const permission = await Notification.requestPermission();
+                    console.log('Permission result:', permission);
+                    
+                    if (permission === 'granted') {
+                        console.log('✅ Permission granted!');
+                        alert('✅ Notifications enabled! You\'ll get alerts for new messages.');
+                        this.showBrowserNotification('Budget Mate', 'Notifications are working! 🎉');
+                        return true;
+                    } else {
+                        console.log('❌ Permission denied by user');
+                        alert('⚠️ Notifications blocked. You won\'t receive alerts for new messages.');
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Error requesting permission:', error);
+                    alert('❌ Error requesting notification permission: ' + error.message);
+                    return false;
+                }
             }
 
             showBrowserNotification(title, body, data = {}) {
@@ -2109,6 +2133,16 @@
                     switch(action) {
                         case 'logout':
                             await storage.signOut();
+                            break;
+                        
+                        case 'test-notification':
+                            console.log('Test notification button clicked');
+                            const testResult = this.showBrowserNotification('Test Notification', 'If you see this, notifications are working! 🎉');
+                            if (testResult) {
+                                alert('✅ Test notification sent! Check your notification tray.');
+                            } else {
+                                alert('❌ Could not send notification. Check console for details.');
+                            }
                             break;
                         
                         case 'toggle-private':
@@ -3947,6 +3981,9 @@
                     '<span class="text-sm font-medium">Notifications</span>' +
                     '</button>' +
                     '</div>' +
+                    '<button data-action="test-notification" class="card card-mobile hover:shadow-lg transition w-full mt-4 py-3 bg-purple-50 border-2 border-purple-300 text-purple-700 font-medium">' +
+                    '🔔 Test Notification System' +
+                    '</button>' +
                     '</div>';
             }
 
