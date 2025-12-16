@@ -1870,6 +1870,8 @@
                 this.privateMode = false;
                 this.loading = false;
                 this.receiptItems = [];
+                this.lastUnreadCount = 0;
+                this.notificationPolling = null;
                 this.init();
             }
 
@@ -1886,12 +1888,75 @@
                 this.render();
                 this.attachEventListeners();
                 window.app = this;
+                
+                // Start Android notification polling if user is logged in
+                if (this.currentUser && typeof AndroidBridge !== 'undefined') {
+                    console.log('Android app detected - starting notification polling');
+                    this.startAndroidNotificationPolling();
+                }
             }
 
             handleSignOut() {
+                this.stopAndroidNotificationPolling();
                 this.currentUser = null;
                 this.currentView = 'login';
                 this.render();
+            }
+
+            // Android App Notification Integration
+            startAndroidNotificationPolling() {
+                if (typeof AndroidBridge === 'undefined') {
+                    console.log('Not running in Android app - skipping notification polling');
+                    return;
+                }
+
+                console.log('Starting Android notification polling...');
+                
+                // Check for new messages every 10 seconds
+                this.notificationPolling = setInterval(async () => {
+                    if (!this.currentUser) return;
+
+                    try {
+                        const currentUnread = await storage.getUnreadMessageCount();
+                        
+                        // New message detected!
+                        if (currentUnread > this.lastUnreadCount) {
+                            console.log('New messages detected:', currentUnread - this.lastUnreadCount);
+                            
+                            // Get the latest messages
+                            const messages = await storage.getRecentMessages();
+                            if (messages && messages.length > 0) {
+                                const latestMessage = messages[0];
+                                
+                                // Call Android native notification
+                                AndroidBridge.showNotification(
+                                    '💬 ' + latestMessage.sender_name,
+                                    latestMessage.content.substring(0, 100)
+                                );
+                                
+                                console.log('Android notification sent:', latestMessage.sender_name);
+                            }
+                        }
+                        
+                        this.lastUnreadCount = currentUnread;
+                    } catch (error) {
+                        console.error('Notification polling error:', error);
+                    }
+                }, 10000); // Check every 10 seconds
+                
+                // Initial check
+                storage.getUnreadMessageCount().then(count => {
+                    this.lastUnreadCount = count;
+                    console.log('Initial unread count:', count);
+                });
+            }
+
+            stopAndroidNotificationPolling() {
+                if (this.notificationPolling) {
+                    console.log('Stopping Android notification polling');
+                    clearInterval(this.notificationPolling);
+                    this.notificationPolling = null;
+                }
             }
 
             attachEventListeners() {
