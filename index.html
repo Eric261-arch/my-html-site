@@ -1870,8 +1870,8 @@
                 this.privateMode = false;
                 this.loading = false;
                 this.receiptItems = [];
-                this.lastUnreadCount = 0;
-                this.notificationPolling = null;
+                this.messageChannel = null;
+                this.notificationChannel = null;
                 this.init();
             }
 
@@ -1889,73 +1889,80 @@
                 this.attachEventListeners();
                 window.app = this;
                 
-                // Start Android notification polling if user is logged in
-                if (this.currentUser && typeof AndroidBridge !== 'undefined') {
-                    console.log('Android app detected - starting notification polling');
-                    this.startAndroidNotificationPolling();
+                // Setup real-time notifications if user is logged in
+                if (this.currentUser) {
+                    this.setupRealtimeNotifications();
                 }
             }
 
             handleSignOut() {
-                this.stopAndroidNotificationPolling();
+                this.unsubscribeRealtimeNotifications();
                 this.currentUser = null;
                 this.currentView = 'login';
                 this.render();
             }
 
-            // Android App Notification Integration
-            startAndroidNotificationPolling() {
-                if (typeof AndroidBridge === 'undefined') {
-                    console.log('Not running in Android app - skipping notification polling');
-                    return;
-                }
-
-                console.log('Starting Android notification polling...');
+            // Real-time Notification System
+            setupRealtimeNotifications() {
+                console.log('Setting up real-time notifications for:', this.currentUser.name);
                 
-                // Check for new messages every 10 seconds
-                this.notificationPolling = setInterval(async () => {
-                    if (!this.currentUser) return;
-
-                    try {
-                        const currentUnread = await storage.getUnreadMessageCount();
-                        
-                        // New message detected!
-                        if (currentUnread > this.lastUnreadCount) {
-                            console.log('New messages detected:', currentUnread - this.lastUnreadCount);
+                // Subscribe to new messages sent TO this user
+                this.notificationChannel = supabase
+                    .channel('user-notifications-' + this.currentUser.id)
+                    .on('postgres_changes', 
+                        { 
+                            event: 'INSERT', 
+                            schema: 'public', 
+                            table: 'messages',
+                            filter: 'receiver_id=eq.' + this.currentUser.id
+                        },
+                        async (payload) => {
+                            console.log('📬 New message received in real-time!', payload);
                             
-                            // Get the latest messages
-                            const messages = await storage.getRecentMessages();
-                            if (messages && messages.length > 0) {
-                                const latestMessage = messages[0];
+                            try {
+                                // Get sender info
+                                const { data: sender } = await supabase
+                                    .from('users')
+                                    .select('name')
+                                    .eq('id', payload.new.sender_id)
+                                    .single();
                                 
-                                // Call Android native notification
-                                AndroidBridge.showNotification(
-                                    '💬 ' + latestMessage.sender_name,
-                                    latestMessage.content.substring(0, 100)
-                                );
+                                const senderName = sender?.name || 'Someone';
+                                const messageContent = payload.new.content || '';
                                 
-                                console.log('Android notification sent:', latestMessage.sender_name);
+                                console.log('Message from:', senderName);
+                                
+                                // Update notification badge immediately
+                                await this.updateNotificationBadge();
+                                
+                                // Trigger Android notification if in Android app
+                                if (typeof AndroidBridge !== 'undefined') {
+                                    console.log('🔔 Triggering Android notification');
+                                    AndroidBridge.showNotification(
+                                        '💬 ' + senderName,
+                                        messageContent.substring(0, 100)
+                                    );
+                                } else {
+                                    console.log('Not in Android app - skipping native notification');
+                                }
+                            } catch (error) {
+                                console.error('Error handling new message notification:', error);
                             }
                         }
-                        
-                        this.lastUnreadCount = currentUnread;
-                    } catch (error) {
-                        console.error('Notification polling error:', error);
-                    }
-                }, 10000); // Check every 10 seconds
-                
-                // Initial check
-                storage.getUnreadMessageCount().then(count => {
-                    this.lastUnreadCount = count;
-                    console.log('Initial unread count:', count);
-                });
+                    )
+                    .subscribe((status) => {
+                        console.log('Notification channel status:', status);
+                        if (status === 'SUBSCRIBED') {
+                            console.log('✅ Real-time notifications active!');
+                        }
+                    });
             }
 
-            stopAndroidNotificationPolling() {
-                if (this.notificationPolling) {
-                    console.log('Stopping Android notification polling');
-                    clearInterval(this.notificationPolling);
-                    this.notificationPolling = null;
+            unsubscribeRealtimeNotifications() {
+                if (this.notificationChannel) {
+                    console.log('Unsubscribing from real-time notifications');
+                    supabase.removeChannel(this.notificationChannel);
+                    this.notificationChannel = null;
                 }
             }
 
