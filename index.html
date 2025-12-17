@@ -2622,20 +2622,31 @@
             }
 
             async updateNotificationBadge() {
+                console.log('🔔 updateNotificationBadge called');
                 const unreadCount = await storage.getUnreadMessageCount();
+                console.log('Unread count:', unreadCount);
+                
                 const badge = document.querySelector('button[data-modal="notifications"] span');
                 const button = document.querySelector('button[data-modal="notifications"]');
                 
+                console.log('Badge element:', badge);
+                console.log('Button element:', button);
+                
                 if (unreadCount > 0) {
                     if (badge) {
+                        console.log('Updating existing badge to:', unreadCount);
                         badge.textContent = unreadCount;
                     } else if (button) {
+                        console.log('Creating new badge with count:', unreadCount);
                         const newBadge = document.createElement('span');
                         newBadge.className = 'absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center';
                         newBadge.textContent = unreadCount;
                         button.insertBefore(newBadge, button.firstChild);
+                    } else {
+                        console.log('⚠️ Notification button not found in DOM!');
                     }
                 } else {
+                    console.log('No unread messages, removing badge');
                     if (badge) {
                         badge.remove();
                     }
