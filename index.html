@@ -1906,10 +1906,9 @@
             setupRealtimeNotifications() {
                 console.log('Setting up real-time notifications for:', this.currentUser.name);
                 
-                // Subscribe to multiple events in one channel
+                // Subscribe to new messages sent TO this user
                 this.notificationChannel = supabase
                     .channel('user-notifications-' + this.currentUser.id)
-                    // Listen for new MESSAGES
                     .on('postgres_changes', 
                         { 
                             event: 'INSERT', 
@@ -1952,63 +1951,10 @@
                             }
                         }
                     )
-                    // Listen for new BILLS/EXPENSES shared with this user
-                    .on('postgres_changes',
-                        {
-                            event: 'INSERT',
-                            schema: 'public',
-                            table: 'bill_shares',
-                            filter: 'user_id=eq.' + this.currentUser.id
-                        },
-                        async (payload) => {
-                            console.log('📄 New bill/expense shared with you!', payload);
-                            
-                            try {
-                                // Get the bill details
-                                const { data: bill } = await supabase
-                                    .from('bills')
-                                    .select('name, amount, type, user_id')
-                                    .eq('id', payload.new.bill_id)
-                                    .single();
-                                
-                                if (bill) {
-                                    // Get creator name separately
-                                    const { data: creator } = await supabase
-                                        .from('users')
-                                        .select('name')
-                                        .eq('id', bill.user_id)
-                                        .single();
-                                    
-                                    const creatorName = creator?.name || 'Someone';
-                                    const billType = bill.type === 'expense' ? 'expense' : 'bill';
-                                    const billName = bill.name || 'Untitled';
-                                    const amount = bill.amount || 0;
-                                    
-                                    console.log(`New ${billType} from:`, creatorName);
-                                    console.log('Bill name:', billName);
-                                    console.log('Amount:', amount);
-                                    
-                                    // Update notification badge immediately
-                                    await this.updateNotificationBadge();
-                                    
-                                    // Trigger Android notification
-                                    if (typeof AndroidBridge !== 'undefined') {
-                                        console.log('🔔 Triggering Android notification for bill/expense');
-                                        AndroidBridge.showNotification(
-                                            `${billType === 'expense' ? '💰' : '📄'} ${creatorName} shared a ${billType}`,
-                                            `${billName} - $${amount.toFixed(2)}`
-                                        );
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('Error handling new bill/expense notification:', error);
-                            }
-                        }
-                    )
                     .subscribe((status) => {
                         console.log('Notification channel status:', status);
                         if (status === 'SUBSCRIBED') {
-                            console.log('✅ Real-time notifications active! (Messages + Bills/Expenses)');
+                            console.log('✅ Real-time notifications active!');
                         }
                     });
             }
@@ -5067,3 +5013,4 @@
     </script>
 </body>
 </html>
+
