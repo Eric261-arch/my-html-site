@@ -1914,7 +1914,7 @@
                             event: 'INSERT', 
                             schema: 'public', 
                             table: 'messages',
-                            filter: 'receiver_id=eq.' + this.currentUser.id
+                            filter: 'to_user_id=eq.' + this.currentUser.id
                         },
                         async (payload) => {
                             console.log('📬 New message received in real-time!', payload);
@@ -1924,13 +1924,14 @@
                                 const { data: sender } = await supabase
                                     .from('users')
                                     .select('name')
-                                    .eq('id', payload.new.sender_id)
+                                    .eq('id', payload.new.from_user_id)
                                     .single();
                                 
                                 const senderName = sender?.name || 'Someone';
-                                const messageContent = payload.new.content || '';
+                                const messageContent = payload.new.message_text || '';
                                 
                                 console.log('Message from:', senderName);
+                                console.log('Message content:', messageContent);
                                 
                                 // Update notification badge immediately
                                 await this.updateNotificationBadge();
