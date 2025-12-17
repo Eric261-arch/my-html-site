@@ -2626,7 +2626,8 @@
                 const unreadCount = await storage.getUnreadMessageCount();
                 console.log('Unread count:', unreadCount);
                 
-                const badge = document.querySelector('button[data-modal="notifications"] span');
+                // Find the red notification badge specifically (not other spans inside the button)
+                const badge = document.querySelector('button[data-modal="notifications"] span.bg-red-500');
                 const button = document.querySelector('button[data-modal="notifications"]');
                 
                 console.log('Badge element:', badge);
@@ -2641,7 +2642,8 @@
                         const newBadge = document.createElement('span');
                         newBadge.className = 'absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center';
                         newBadge.textContent = unreadCount;
-                        button.insertBefore(newBadge, button.firstChild);
+                        button.style.position = 'relative'; // Ensure button has relative positioning
+                        button.appendChild(newBadge);
                     } else {
                         console.log('⚠️ Notification button not found in DOM!');
                     }
