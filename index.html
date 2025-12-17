@@ -1967,12 +1967,19 @@
                                 // Get the bill details
                                 const { data: bill } = await supabase
                                     .from('bills')
-                                    .select('name, amount, type, user_id, users(name)')
+                                    .select('name, amount, type, user_id')
                                     .eq('id', payload.new.bill_id)
                                     .single();
                                 
                                 if (bill) {
-                                    const creatorName = bill.users?.name || 'Someone';
+                                    // Get creator name separately
+                                    const { data: creator } = await supabase
+                                        .from('users')
+                                        .select('name')
+                                        .eq('id', bill.user_id)
+                                        .single();
+                                    
+                                    const creatorName = creator?.name || 'Someone';
                                     const billType = bill.type === 'expense' ? 'expense' : 'bill';
                                     const billName = bill.name || 'Untitled';
                                     const amount = bill.amount || 0;
