@@ -413,120 +413,35 @@
             }
 
             setupRealtimeSubscriptions() {
-                // Store all channel references for cleanup
-                this.realtimeChannels = [];
-
                 // Subscribe to bills changes
-                const billsChannel = supabase
+                supabase
                     .channel('bills-changes')
                     .on('postgres_changes', 
                         { event: '*', schema: 'public', table: 'bills' },
-                        async (payload) => {
-                            console.log('📋 Bills changed:', payload);
+                        (payload) => {
+                            console.log('Bills changed:', payload);
                             if (window.app && this.user) {
-                                // Refresh current view to show updates immediately
-                                await window.app.loadCurrentView();
+                                // Refresh the app when bills change
+                                window.app.render();
                             }
                         }
                     )
                     .subscribe();
-                this.realtimeChannels.push(billsChannel);
 
                 // Subscribe to bill_shares changes
-                const billSharesChannel = supabase
+                supabase
                     .channel('bill-shares-changes')
                     .on('postgres_changes',
                         { event: '*', schema: 'public', table: 'bill_shares' },
-                        async (payload) => {
-                            console.log('💰 Bill shares changed:', payload);
+                        (payload) => {
+                            console.log('Bill shares changed:', payload);
                             if (window.app && this.user) {
-                                // Refresh current view to show updates immediately
-                                await window.app.loadCurrentView();
+                                // Refresh the app when bill shares change
+                                window.app.render();
                             }
                         }
                     )
                     .subscribe();
-                this.realtimeChannels.push(billSharesChannel);
-
-                // Subscribe to expenses changes
-                const expensesChannel = supabase
-                    .channel('expenses-changes')
-                    .on('postgres_changes',
-                        { event: '*', schema: 'public', table: 'expenses' },
-                        async (payload) => {
-                            console.log('💸 Expenses changed:', payload);
-                            if (window.app && this.user) {
-                                // Refresh current view to show updates immediately
-                                await window.app.loadCurrentView();
-                            }
-                        }
-                    )
-                    .subscribe();
-                this.realtimeChannels.push(expensesChannel);
-
-                // Subscribe to incomes changes
-                const incomesChannel = supabase
-                    .channel('incomes-changes')
-                    .on('postgres_changes',
-                        { event: '*', schema: 'public', table: 'incomes' },
-                        async (payload) => {
-                            console.log('💵 Incomes changed:', payload);
-                            if (window.app && this.user) {
-                                // Refresh current view to show updates immediately
-                                await window.app.loadCurrentView();
-                            }
-                        }
-                    )
-                    .subscribe();
-                this.realtimeChannels.push(incomesChannel);
-
-                // Subscribe to messages changes (for real-time chat)
-                const messagesChannel = supabase
-                    .channel('messages-changes')
-                    .on('postgres_changes',
-                        { event: '*', schema: 'public', table: 'messages' },
-                        async (payload) => {
-                            console.log('💬 Messages changed:', payload);
-                            if (window.app && this.user) {
-                                // Update notification badge
-                                await window.app.updateNotificationBadge();
-                                // If user is on messages view, refresh it
-                                if (window.app.currentView === 'messages') {
-                                    await window.app.loadCurrentView();
-                                }
-                            }
-                        }
-                    )
-                    .subscribe();
-                this.realtimeChannels.push(messagesChannel);
-
-                // Subscribe to connections changes (partner invitations)
-                const connectionsChannel = supabase
-                    .channel('connections-changes')
-                    .on('postgres_changes',
-                        { event: '*', schema: 'public', table: 'connections' },
-                        async (payload) => {
-                            console.log('🔗 Connections changed:', payload);
-                            if (window.app && this.user) {
-                                // Refresh current view to show updates immediately
-                                await window.app.loadCurrentView();
-                            }
-                        }
-                    )
-                    .subscribe();
-                this.realtimeChannels.push(connectionsChannel);
-
-                console.log('✅ All real-time subscriptions set up');
-            }
-
-            unsubscribeRealtimeSubscriptions() {
-                if (this.realtimeChannels && this.realtimeChannels.length > 0) {
-                    console.log('Unsubscribing from all real-time channels');
-                    this.realtimeChannels.forEach(channel => {
-                        supabase.removeChannel(channel);
-                    });
-                    this.realtimeChannels = [];
-                }
             }
 
             setupOfflineHandling() {
@@ -1982,10 +1897,6 @@
 
             handleSignOut() {
                 this.unsubscribeRealtimeNotifications();
-                // Also unsubscribe from SupabaseService realtime channels
-                if (window.supabaseService) {
-                    window.supabaseService.unsubscribeRealtimeSubscriptions();
-                }
                 this.currentUser = null;
                 this.currentView = 'login';
                 this.render();
@@ -1995,9 +1906,10 @@
             setupRealtimeNotifications() {
                 console.log('Setting up real-time notifications for:', this.currentUser.name);
                 
-                // Subscribe to new messages sent TO this user
+                // Subscribe to multiple events in one channel
                 this.notificationChannel = supabase
                     .channel('user-notifications-' + this.currentUser.id)
+                    // Listen for new MESSAGES
                     .on('postgres_changes', 
                         { 
                             event: 'INSERT', 
@@ -2040,10 +1952,63 @@
                             }
                         }
                     )
+                    // Listen for new BILLS/EXPENSES shared with this user
+                    .on('postgres_changes',
+                        {
+                            event: 'INSERT',
+                            schema: 'public',
+                            table: 'bill_shares',
+                            filter: 'user_id=eq.' + this.currentUser.id
+                        },
+                        async (payload) => {
+                            console.log('📄 New bill/expense shared with you!', payload);
+                            
+                            try {
+                                // Get the bill details
+                                const { data: bill } = await supabase
+                                    .from('bills')
+                                    .select('name, amount, type, user_id')
+                                    .eq('id', payload.new.bill_id)
+                                    .single();
+                                
+                                if (bill) {
+                                    // Get creator name separately
+                                    const { data: creator } = await supabase
+                                        .from('users')
+                                        .select('name')
+                                        .eq('id', bill.user_id)
+                                        .single();
+                                    
+                                    const creatorName = creator?.name || 'Someone';
+                                    const billType = bill.type === 'expense' ? 'expense' : 'bill';
+                                    const billName = bill.name || 'Untitled';
+                                    const amount = bill.amount || 0;
+                                    
+                                    console.log(`New ${billType} from:`, creatorName);
+                                    console.log('Bill name:', billName);
+                                    console.log('Amount:', amount);
+                                    
+                                    // Update notification badge immediately
+                                    await this.updateNotificationBadge();
+                                    
+                                    // Trigger Android notification
+                                    if (typeof AndroidBridge !== 'undefined') {
+                                        console.log('🔔 Triggering Android notification for bill/expense');
+                                        AndroidBridge.showNotification(
+                                            `${billType === 'expense' ? '💰' : '📄'} ${creatorName} shared a ${billType}`,
+                                            `${billName} - $${amount.toFixed(2)}`
+                                        );
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Error handling new bill/expense notification:', error);
+                            }
+                        }
+                    )
                     .subscribe((status) => {
                         console.log('Notification channel status:', status);
                         if (status === 'SUBSCRIBED') {
-                            console.log('✅ Real-time notifications active!');
+                            console.log('✅ Real-time notifications active! (Messages + Bills/Expenses)');
                         }
                     });
             }
@@ -3515,17 +3480,6 @@
                     expenses: pendingExpenses,
                     remaining: monthlyIncome - monthlyBills - pendingExpenses
                 };
-            }
-
-            async loadCurrentView() {
-                // Reload only the current view's data and update the display
-                // This is more efficient than full render() for real-time updates
-                if (this.currentView === 'login') {
-                    return; // Don't do anything if on login page
-                }
-
-                console.log('🔄 Reloading current view:', this.activeTab);
-                await this.render();
             }
 
             async render() {
