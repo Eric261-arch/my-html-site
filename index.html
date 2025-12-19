@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Budget Mate - Financial Management App</title>
-    <meta name="description" content="Manage your finances, split bills, and track expenses with Budget Mate">
+    <title>Smart Budget - Financial Management App</title>
+    <meta name="description" content="Manage your finances, split bills, and track expenses with Smart Budget">
     <meta name="theme-color" content="#667eea">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -790,167 +790,6 @@
                 }
             }
 
-            // Message methods for partner communication
-            async sendMessage(toUserId, messageText, billId = null) {
-                try {
-                    const messageData = {
-                        from_user_id: this.user.id,
-                        to_user_id: toUserId,
-                        message_text: messageText,
-                        bill_id: billId,
-                        read: false
-                    };
-
-                    const { data, error } = await supabase
-                        .from('messages')
-                        .insert([messageData])
-                        .select()
-                        .single();
-
-                    if (error) throw error;
-                    return data;
-                } catch (error) {
-                    console.error('Send message error:', error);
-                    throw error;
-                }
-            }
-
-            async getConversation(partnerId) {
-                try {
-                    const { data, error } = await supabase
-                        .from('messages')
-                        .select('*')
-                        .or(`and(from_user_id.eq.${this.user.id},to_user_id.eq.${partnerId}),and(from_user_id.eq.${partnerId},to_user_id.eq.${this.user.id})`)
-                        .order('created_at', { ascending: true });
-
-                    if (error) throw error;
-                    return data || [];
-                } catch (error) {
-                    console.error('Get conversation error:', error);
-                    throw error;
-                }
-            }
-
-            async getUnreadMessageCount() {
-                try {
-                    const { count, error } = await supabase
-                        .from('messages')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('to_user_id', this.user.id)
-                        .eq('read', false);
-
-                    if (error) throw error;
-                    return count || 0;
-                } catch (error) {
-                    console.error('Get unread count error:', error);
-                    return 0;
-                }
-            }
-
-            async getRecentMessages() {
-                try {
-                    // Get all messages involving this user
-                    const { data, error } = await supabase
-                        .from('messages')
-                        .select('*')
-                        .or(`from_user_id.eq.${this.user.id},to_user_id.eq.${this.user.id}`)
-                        .order('created_at', { ascending: false })
-                        .limit(50);
-
-                    if (error) throw error;
-
-                    // Group by conversation partner and get latest message
-                    const conversations = {};
-                    data?.forEach(msg => {
-                        const partnerId = msg.from_user_id === this.user.id ? msg.to_user_id : msg.from_user_id;
-                        if (!conversations[partnerId] || new Date(msg.created_at) > new Date(conversations[partnerId].created_at)) {
-                            conversations[partnerId] = msg;
-                        }
-                    });
-
-                    // Sort by created_at descending (newest first)
-                    return Object.values(conversations).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                } catch (error) {
-                    console.error('Get recent messages error:', error);
-                    return [];
-                }
-            }
-
-            async markMessagesAsRead(partnerId) {
-                try {
-                    const { error } = await supabase
-                        .from('messages')
-                        .update({ read: true })
-                        .eq('from_user_id', partnerId)
-                        .eq('to_user_id', this.user.id)
-                        .eq('read', false);
-
-                    if (error) throw error;
-                    return true;
-                } catch (error) {
-                    console.error('Mark messages as read error:', error);
-                    throw error;
-                }
-            }
-
-            // Attachment methods for receipts/images
-            async uploadAttachment(billId, fileName, fileSize, mimeType, fileData) {
-                try {
-                    const attachmentData = {
-                        user_id: this.user.id,
-                        bill_id: billId,
-                        file_name: fileName,
-                        file_size: fileSize,
-                        mime_type: mimeType,
-                        file_data: fileData // Base64 encoded
-                    };
-
-                    const { data, error } = await supabase
-                        .from('attachments')
-                        .insert([attachmentData])
-                        .select()
-                        .single();
-
-                    if (error) throw error;
-                    return data;
-                } catch (error) {
-                    console.error('Upload attachment error:', error);
-                    throw error;
-                }
-            }
-
-            async getAttachments(billId) {
-                try {
-                    const { data, error } = await supabase
-                        .from('attachments')
-                        .select('*')
-                        .eq('bill_id', billId)
-                        .order('created_at', { ascending: true });
-
-                    if (error) throw error;
-                    return data || [];
-                } catch (error) {
-                    console.error('Get attachments error:', error);
-                    return [];
-                }
-            }
-
-            async deleteAttachment(attachmentId) {
-                try {
-                    const { error } = await supabase
-                        .from('attachments')
-                        .delete()
-                        .eq('id', attachmentId)
-                        .eq('user_id', this.user.id);
-
-                    if (error) throw error;
-                    return true;
-                } catch (error) {
-                    console.error('Delete attachment error:', error);
-                    throw error;
-                }
-            }
-
             // Enhanced Bill/Expense methods
             async addBill(billData) {
                 try {
@@ -1034,58 +873,6 @@
                     return data;
                 } catch (error) {
                     console.error('Add expense error:', error);
-                    throw error;
-                }
-            }
-
-            async updateExpense(expenseId, expenseData) {
-                try {
-                    const expenseToUpdate = {
-                        name: expenseData.name,
-                        amount: expenseData.totalAmount,
-                        due_date: expenseData.expenseDate,
-                        description: JSON.stringify(expenseData.items || []),
-                        shared_with: expenseData.shared_with || [],
-                        splits: expenseData.splits || {}
-                    };
-
-                    // Update the expense
-                    const { data, error } = await supabase
-                        .from('bills')
-                        .update(expenseToUpdate)
-                        .eq('id', expenseId)
-                        .select()
-                        .single();
-
-                    if (error) throw error;
-
-                    // Delete existing bill shares
-                    const { error: deleteError } = await supabase
-                        .from('bill_shares')
-                        .delete()
-                        .eq('bill_id', expenseId);
-
-                    if (deleteError) throw deleteError;
-
-                    // Recreate bill shares if expense is shared
-                    if (expenseData.shared_with && expenseData.splits) {
-                        const shares = Object.entries(expenseData.splits).map(([userId, amount]) => ({
-                            bill_id: expenseId,
-                            user_id: userId,
-                            amount: amount,
-                            paid: false
-                        }));
-
-                        const { error: sharesError } = await supabase
-                            .from('bill_shares')
-                            .insert(shares);
-
-                        if (sharesError) throw sharesError;
-                    }
-
-                    return data;
-                } catch (error) {
-                    console.error('Update expense error:', error);
                     throw error;
                 }
             }
@@ -1251,74 +1038,33 @@
                         .eq('paid', true)
                         .order('paid_date', { ascending: false });
 
-                    if (ownedError) {
-                        console.error('Owned history error:', ownedError);
-                        throw ownedError;
-                    }
+                    if (ownedError) throw ownedError;
 
-                    console.log('Owned history:', ownedHistory);
-
-                    // Get completed bills/expenses shared with user - first get the shares
-                    const { data: userShares, error: sharesError } = await supabase
+                    // Get completed bills/expenses shared with user
+                    const { data: sharedHistory, error: sharedError } = await supabase
                         .from('bill_shares')
-                        .select('bill_id, amount, paid, id')
-                        .eq('user_id', this.user.id);
+                        .select('*, bills!inner(*)')
+                        .eq('user_id', this.user.id)
+                        .eq('bills.paid', true);
 
-                    if (sharesError) {
-                        console.error('Shares error:', sharesError);
-                        throw sharesError;
-                    }
-
-                    console.log('User shares:', userShares);
-
-                    // Get the bill IDs where the bill is paid
-                    const billIds = userShares?.map(share => share.bill_id) || [];
-                    
-                    let sharedBills = [];
-                    if (billIds.length > 0) {
-                        const { data: bills, error: billsError } = await supabase
-                            .from('bills')
-                            .select('*, bill_shares(*)')
-                            .in('id', billIds)
-                            .eq('paid', true);
-
-                        if (billsError) {
-                            console.error('Shared bills error:', billsError);
-                            throw billsError;
-                        }
-
-                        sharedBills = bills || [];
-                    }
-
-                    console.log('Shared bills:', sharedBills);
+                    if (sharedError) throw sharedError;
 
                     // Combine and format history
                     const allHistory = [...(ownedHistory || [])];
                     
                     // Add shared history (avoiding duplicates)
-                    sharedBills?.forEach(bill => {
-                        if (!allHistory.find(item => item.id === bill.id)) {
-                            // Find user's share amount
-                            const userShare = userShares.find(share => share.bill_id === bill.id);
+                    sharedHistory?.forEach(share => {
+                        if (!allHistory.find(item => item.id === share.bills.id)) {
                             allHistory.push({
-                                ...bill,
-                                user_share: userShare?.amount || bill.amount,
+                                ...share.bills,
+                                user_share: share.amount,
                                 is_shared: true,
-                                user_paid: userShare?.paid,
-                                share_id: userShare?.id
+                                user_paid: share.paid,
+                                share_id: share.id
                             });
                         }
                     });
 
-                    console.log('All history:', allHistory);
-                    
-                    // Sort by paid_date, newest first
-                    allHistory.sort((a, b) => {
-                        const dateA = new Date(a.paid_date || a.due_date);
-                        const dateB = new Date(b.paid_date || b.due_date);
-                        return dateB - dateA;
-                    });
-                    
                     return allHistory;
                 } catch (error) {
                     console.error('Get payment history error:', error);
@@ -1531,274 +1277,6 @@
                 }
             }
 
-            // Payment Verification Notification Methods
-            async createPaymentVerificationNotification(billId, payerUserId, receiverUserId, amount, billName) {
-                try {
-                    const { data, error } = await supabase
-                        .from('payment_verifications')
-                        .insert([{
-                            bill_id: billId,
-                            payer_user_id: payerUserId,
-                            receiver_user_id: receiverUserId,
-                            amount: amount,
-                            bill_name: billName,
-                            status: 'pending'
-                        }])
-                        .select()
-                        .single();
-
-                    if (error) throw error;
-                    return data;
-                } catch (error) {
-                    console.error('Create payment verification error:', error);
-                    throw error;
-                }
-            }
-
-            async getPendingPaymentVerifications() {
-                try {
-                    // Use the SQL function for better performance
-                    const { data, error } = await supabase
-                        .rpc('get_pending_verifications', {
-                            user_id_param: this.user.id
-                        });
-
-                    if (error) throw error;
-                    return data || [];
-                } catch (error) {
-                    console.error('Get pending verifications error:', error);
-                    return [];
-                }
-            }
-
-            async verifyPaymentReceived(verificationId, billId) {
-                try {
-                    // Mark verification as confirmed
-                    const { error: verifyError } = await supabase
-                        .from('payment_verifications')
-                        .update({
-                            status: 'confirmed',
-                            verified_at: new Date().toISOString()
-                        })
-                        .eq('id', verificationId);
-
-                    if (verifyError) throw verifyError;
-
-                    // Check if bill is fully paid after this verification
-                    await this.checkAndCompleteBill(billId);
-
-                    return true;
-                } catch (error) {
-                    console.error('Verify payment error:', error);
-                    throw error;
-                }
-            }
-
-            async rejectPaymentVerification(verificationId, reason = '') {
-                try {
-                    const { error } = await supabase
-                        .from('payment_verifications')
-                        .update({
-                            status: 'rejected',
-                            rejected_at: new Date().toISOString(),
-                            rejection_reason: reason
-                        })
-                        .eq('id', verificationId);
-
-                    if (error) throw error;
-                    return true;
-                } catch (error) {
-                    console.error('Reject payment error:', error);
-                    throw error;
-                }
-            }
-
-            // Calculate unpaid amounts per person using SQL function
-            async calculateUnpaidByPerson() {
-                try {
-                    // Use the SQL function for better performance
-                    const { data, error } = await supabase
-                        .rpc('calculate_unpaid_by_person', {
-                            user_id_param: this.user.id
-                        });
-
-                    if (error) {
-                        console.error('SQL function error:', error);
-                        throw error;
-                    }
-
-                    console.log('calculateUnpaidByPerson SQL result:', data);
-
-                    // Transform to object format for easier use
-                    const unpaidByPerson = {};
-                    if (data && data.length > 0) {
-                        data.forEach(row => {
-                            unpaidByPerson[row.person_name] = {
-                                total: parseFloat(row.total_unpaid),
-                                bills: parseFloat(row.bills_unpaid),
-                                expenses: parseFloat(row.expenses_unpaid),
-                                userId: row.person_id
-                            };
-                        });
-                    }
-
-                    console.log('Transformed unpaidByPerson:', unpaidByPerson);
-                    return unpaidByPerson;
-                } catch (error) {
-                    console.error('Calculate unpaid by person error:', error);
-                    // Fallback to client-side calculation
-                    console.log('Falling back to client-side calculation');
-                    return await this.calculateUnpaidByPersonFallback();
-                }
-            }
-
-            // Calculate what the current user owes to others
-            async calculateWhatIOwe() {
-                try {
-                    const bills = await this.getUserBills();
-                    const expenses = await this.getUserExpenses();
-                    const allItems = [...bills, ...expenses];
-
-                    const iOweByPerson = {};
-
-                    for (const item of allItems) {
-                        if (item.is_shared && item.bill_shares) {
-                            // Find the current user's share
-                            const myShare = item.bill_shares.find(share => share.user_id === this.user.id);
-                            
-                            // If current user hasn't paid their share
-                            if (myShare && !myShare.paid) {
-                                // Find the creator of this bill/expense
-                                const creatorId = item.user_id;
-                                
-                                // Get creator details
-                                const { data: creator } = await supabase
-                                    .from('users')
-                                    .select('name')
-                                    .eq('id', creatorId)
-                                    .single();
-
-                                const creatorName = creator?.name || 'Unknown';
-                                
-                                if (!iOweByPerson[creatorName]) {
-                                    iOweByPerson[creatorName] = {
-                                        total: 0,
-                                        bills: 0,
-                                        expenses: 0,
-                                        userId: creatorId
-                                    };
-                                }
-                                
-                                iOweByPerson[creatorName].total += myShare.amount;
-                                if (item.category === 'expense') {
-                                    iOweByPerson[creatorName].expenses += myShare.amount;
-                                } else {
-                                    iOweByPerson[creatorName].bills += myShare.amount;
-                                }
-                            }
-                        }
-                    }
-
-                    return iOweByPerson;
-                } catch (error) {
-                    console.error('Calculate what I owe error:', error);
-                    return {};
-                }
-            }
-
-            // Fallback method for calculating unpaid amounts (client-side)
-            async calculateUnpaidByPersonFallback() {
-                try {
-                    const bills = await this.getUserBills();
-                    const expenses = await this.getUserExpenses();
-                    const allItems = [...bills, ...expenses];
-
-                    const unpaidByPerson = {};
-
-                    for (const item of allItems) {
-                        if (item.is_shared && item.bill_shares) {
-                            for (const share of item.bill_shares) {
-                                if (!share.paid && share.user_id !== this.user.id) {
-                                    // Get user details
-                                    const { data: user } = await supabase
-                                        .from('users')
-                                        .select('name')
-                                        .eq('id', share.user_id)
-                                        .single();
-
-                                    const userName = user?.name || 'Unknown';
-                                    
-                                    if (!unpaidByPerson[userName]) {
-                                        unpaidByPerson[userName] = {
-                                            total: 0,
-                                            bills: 0,
-                                            expenses: 0,
-                                            userId: share.user_id
-                                        };
-                                    }
-                                    
-                                    unpaidByPerson[userName].total += share.amount;
-                                    if (item.category === 'expense') {
-                                        unpaidByPerson[userName].expenses += share.amount;
-                                    } else {
-                                        unpaidByPerson[userName].bills += share.amount;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    return unpaidByPerson;
-                } catch (error) {
-                    console.error('Calculate unpaid by person fallback error:', error);
-                    return {};
-                }
-            }
-
-            // Get total unpaid shared amounts using SQL function
-            async getTotalUnpaidShared() {
-                try {
-                    // Use the SQL function for better performance
-                    const { data, error } = await supabase
-                        .rpc('get_total_unpaid_owed', {
-                            user_id_param: this.user.id
-                        });
-
-                    if (error) throw error;
-                    return parseFloat(data) || 0;
-                } catch (error) {
-                    console.error('Get total unpaid shared error:', error);
-                    // Fallback to client-side calculation
-                    return await this.getTotalUnpaidSharedFallback();
-                }
-            }
-
-            // Fallback method for getting total unpaid (client-side)
-            async getTotalUnpaidSharedFallback() {
-                try {
-                    const bills = await this.getUserBills();
-                    const expenses = await this.getUserExpenses();
-                    const allItems = [...bills, ...expenses];
-
-                    let totalUnpaid = 0;
-
-                    for (const item of allItems) {
-                        if (item.is_shared && item.bill_shares) {
-                            for (const share of item.bill_shares) {
-                                if (!share.paid && share.user_id !== this.user.id) {
-                                    totalUnpaid += share.amount;
-                                }
-                            }
-                        }
-                    }
-
-                    return totalUnpaid;
-                } catch (error) {
-                    console.error('Get total unpaid shared fallback error:', error);
-                    return 0;
-                }
-            }
-
             // Notification methods
             async getUpcomingBillNotifications() {
                 try {
@@ -1870,8 +1348,6 @@
                 this.privateMode = false;
                 this.loading = false;
                 this.receiptItems = [];
-                this.messageChannel = null;
-                this.notificationChannel = null;
                 this.init();
             }
 
@@ -1888,137 +1364,12 @@
                 this.render();
                 this.attachEventListeners();
                 window.app = this;
-                
-                // Setup real-time notifications if user is logged in
-                if (this.currentUser) {
-                    this.setupRealtimeNotifications();
-                }
             }
 
             handleSignOut() {
-                this.unsubscribeRealtimeNotifications();
                 this.currentUser = null;
                 this.currentView = 'login';
                 this.render();
-            }
-
-            // Real-time Notification System
-            setupRealtimeNotifications() {
-                console.log('Setting up real-time notifications for:', this.currentUser.name);
-                
-                // Subscribe to multiple events in one channel
-                this.notificationChannel = supabase
-                    .channel('user-notifications-' + this.currentUser.id)
-                    // Listen for new MESSAGES
-                    .on('postgres_changes', 
-                        { 
-                            event: 'INSERT', 
-                            schema: 'public', 
-                            table: 'messages',
-                            filter: 'to_user_id=eq.' + this.currentUser.id
-                        },
-                        async (payload) => {
-                            console.log('📬 New message received in real-time!', payload);
-                            
-                            try {
-                                // Get sender info
-                                const { data: sender } = await supabase
-                                    .from('users')
-                                    .select('name')
-                                    .eq('id', payload.new.from_user_id)
-                                    .single();
-                                
-                                const senderName = sender?.name || 'Someone';
-                                const messageContent = payload.new.message_text || '';
-                                
-                                console.log('Message from:', senderName);
-                                console.log('Message content:', messageContent);
-                                
-                                // Update notification badge immediately
-                                await this.updateNotificationBadge();
-                                
-                                // Trigger Android notification if in Android app
-                                if (typeof AndroidBridge !== 'undefined') {
-                                    console.log('🔔 Triggering Android notification');
-                                    AndroidBridge.showNotification(
-                                        '💬 ' + senderName,
-                                        messageContent.substring(0, 100)
-                                    );
-                                } else {
-                                    console.log('Not in Android app - skipping native notification');
-                                }
-                            } catch (error) {
-                                console.error('Error handling new message notification:', error);
-                            }
-                        }
-                    )
-                    // Listen for new BILLS/EXPENSES shared with this user
-                    .on('postgres_changes',
-                        {
-                            event: 'INSERT',
-                            schema: 'public',
-                            table: 'bill_shares',
-                            filter: 'user_id=eq.' + this.currentUser.id
-                        },
-                        async (payload) => {
-                            console.log('📄 New bill/expense shared with you!', payload);
-                            
-                            try {
-                                // Get the bill details
-                                const { data: bill } = await supabase
-                                    .from('bills')
-                                    .select('name, amount, type, user_id')
-                                    .eq('id', payload.new.bill_id)
-                                    .single();
-                                
-                                if (bill) {
-                                    // Get creator name separately
-                                    const { data: creator } = await supabase
-                                        .from('users')
-                                        .select('name')
-                                        .eq('id', bill.user_id)
-                                        .single();
-                                    
-                                    const creatorName = creator?.name || 'Someone';
-                                    const billType = bill.type === 'expense' ? 'expense' : 'bill';
-                                    const billName = bill.name || 'Untitled';
-                                    const amount = bill.amount || 0;
-                                    
-                                    console.log(`New ${billType} from:`, creatorName);
-                                    console.log('Bill name:', billName);
-                                    console.log('Amount:', amount);
-                                    
-                                    // Update notification badge immediately
-                                    await this.updateNotificationBadge();
-                                    
-                                    // Trigger Android notification
-                                    if (typeof AndroidBridge !== 'undefined') {
-                                        console.log('🔔 Triggering Android notification for bill/expense');
-                                        AndroidBridge.showNotification(
-                                            `${billType === 'expense' ? '💰' : '📄'} ${creatorName} shared a ${billType}`,
-                                            `${billName} - $${amount.toFixed(2)}`
-                                        );
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('Error handling new bill/expense notification:', error);
-                            }
-                        }
-                    )
-                    .subscribe((status) => {
-                        console.log('Notification channel status:', status);
-                        if (status === 'SUBSCRIBED') {
-                            console.log('✅ Real-time notifications active! (Messages + Bills/Expenses)');
-                        }
-                    });
-            }
-
-            unsubscribeRealtimeNotifications() {
-                if (this.notificationChannel) {
-                    console.log('Unsubscribing from real-time notifications');
-                    supabase.removeChannel(this.notificationChannel);
-                    this.notificationChannel = null;
-                }
             }
 
             attachEventListeners() {
@@ -2067,22 +1418,11 @@
                         
                         case 'switch-tab':
                             this.activeTab = element.dataset.tab;
-                            // Show loading state
-                            const mainArea = document.querySelector('.max-w-7xl.mx-auto.p-4');
-                            if (mainArea) {
-                                mainArea.innerHTML = '<div class="flex justify-center items-center py-12"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div></div>';
-                            }
-                            await this.render();
+                            this.render();
                             break;
                         
                         case 'show-modal':
-                            await this.showModal(element.dataset.modal, element.dataset.id);
-                            // If opening notifications, update badge after modal opens
-                            if (element.dataset.modal === 'notifications') {
-                                setTimeout(async () => {
-                                    await this.updateNotificationBadge();
-                                }, 500);
-                            }
+                            this.showModal(element.dataset.modal, element.dataset.id);
                             break;
                         
                         case 'close-modal':
@@ -2109,14 +1449,6 @@
                                 this.render();
                             }
                             break;
-                        
-                        case 'edit-bill':
-                            await this.showModal('bill', element.dataset.billId);
-                            break;
-                        
-                        case 'edit-expense':
-                            await this.showModal('expense', element.dataset.expenseId);
-                            break;
 
                         case 'remove-connection':
                             if (confirm('Remove this connection? This will also remove any shared bills.')) {
@@ -2141,25 +1473,6 @@
 
                         case 'remove-receipt-item':
                             this.removeReceiptItem(parseInt(element.dataset.index));
-                            break;
-                        
-                        case 'open-chat':
-                            await this.showModal('chat', element.dataset.partnerId);
-                            // Update badge after opening chat (marks messages as read)
-                            setTimeout(async () => {
-                                await this.updateNotificationBadge();
-                            }, 500);
-                            break;
-                        
-                        case 'view-attachment':
-                            this.viewAttachment(element.dataset.attachmentData, element.dataset.attachmentName);
-                            break;
-                        
-                        case 'delete-attachment':
-                            if (confirm('Delete this attachment?')) {
-                                await storage.deleteAttachment(element.dataset.attachmentId);
-                                this.render();
-                            }
                             break;
                     }
                 } catch (error) {
@@ -2210,11 +1523,6 @@
                 const totalInput = document.querySelector('input[name="totalAmount"]');
                 if (totalInput) {
                     totalInput.value = total.toFixed(2);
-                }
-                
-                // Update split preview when total changes
-                if (window.updateExpenseSplitPreview) {
-                    window.updateExpenseSplitPreview();
                 }
             }
 
@@ -2287,55 +1595,6 @@
                             this.render();
                             break;
                         
-                        case 'send-message':
-                            await storage.sendMessage(data.partnerId, data.messageText);
-                            
-                            // Update messages directly without closing modal
-                            const chatMessagesDiv = document.getElementById('chat-messages');
-                            if (chatMessagesDiv) {
-                                // Get updated messages
-                                const messages = await storage.getConversation(data.partnerId);
-                                
-                                // Rebuild messages HTML
-                                let messagesHTML = '';
-                                messages.forEach(msg => {
-                                    const isFromMe = msg.from_user_id === this.currentUser.id;
-                                    const timestamp = window.formatMessageTimestamp(msg.created_at);
-                                    
-                                    if (isFromMe) {
-                                        messagesHTML += 
-                                            '<div class="flex justify-end mb-3">' +
-                                            '<div class="max-w-xs lg:max-w-md">' +
-                                            '<div class="bg-purple-600 text-white rounded-lg rounded-tr-none px-4 py-2">' +
-                                            '<p class="text-sm">' + msg.message_text + '</p>' +
-                                            '</div>' +
-                                            '<p class="text-xs text-gray-400 mt-1 text-right">' + timestamp + '</p>' +
-                                            '</div>' +
-                                            '</div>';
-                                    } else {
-                                        messagesHTML += 
-                                            '<div class="flex justify-start mb-3">' +
-                                            '<div class="max-w-xs lg:max-w-md">' +
-                                            '<div class="bg-gray-200 text-gray-800 rounded-lg rounded-tl-none px-4 py-2">' +
-                                            '<p class="text-sm">' + msg.message_text + '</p>' +
-                                            '</div>' +
-                                            '<p class="text-xs text-gray-400 mt-1">' + timestamp + '</p>' +
-                                            '</div>' +
-                                            '</div>';
-                                    }
-                                });
-                                
-                                // Update messages
-                                chatMessagesDiv.innerHTML = messagesHTML;
-                                
-                                // Clear input and scroll to bottom
-                                const messageInput = document.querySelector('input[name="messageText"]');
-                                if (messageInput) messageInput.value = '';
-                                
-                                chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
-                            }
-                            break;
-                        
                         case 'add-income':
                         case 'edit-income':
                             const incomeData = {
@@ -2366,94 +1625,36 @@
                                 recurrence_interval: data.recurring === 'true' ? data.recurrenceInterval : null
                             };
 
-                            // Handle shared bills - now supports multiple people
-                            const billForm = document.querySelector('form[data-form="add-bill"], form[data-form="edit-bill"]');
-                            const selectedPeopleCheckboxes = billForm?.querySelectorAll('input[name="shareWith[]"]:checked');
-                            
-                            if (selectedPeopleCheckboxes && selectedPeopleCheckboxes.length > 0) {
-                                const selectedPeople = Array.from(selectedPeopleCheckboxes).map(cb => cb.value);
-                                billData.shared_with = selectedPeople;
+                            // Handle shared bills
+                            if (data.shareWith && data.shareWith !== '') {
+                                billData.shared_with = [data.shareWith];
                                 billData.splits = {};
                                 
-                                const splitType = billForm.querySelector('input[name="splitType"]:checked')?.value || 'equal';
-                                const peopleCount = selectedPeople.length + 1; // +1 for creator
-                                
-                                if (splitType === 'equal') {
-                                    const perPerson = billData.amount / peopleCount;
-                                    billData.splits[this.currentUser.id] = perPerson;
-                                    selectedPeople.forEach(personId => {
-                                        billData.splits[personId] = perPerson;
-                                    });
-                                } else if (splitType === 'custom') {
+                                if (data.splitType === 'equal') {
+                                    billData.splits[this.currentUser.id] = billData.amount / 2;
+                                    billData.splits[data.shareWith] = billData.amount / 2;
+                                } else if (data.splitType === 'custom') {
                                     const userAmount = parseFloat(data.userAmount) || 0;
                                     billData.splits[this.currentUser.id] = userAmount;
-                                    
-                                    selectedPeople.forEach(personId => {
-                                        const amountInput = billForm.querySelector(`input[name="custom-${personId}"]`);
-                                        const amount = parseFloat(amountInput?.value || 0);
-                                        billData.splits[personId] = amount;
-                                    });
-                                    
-                                    // Validate total
-                                    const splitTotal = Object.values(billData.splits).reduce((sum, amt) => sum + amt, 0);
-                                    if (Math.abs(splitTotal - billData.amount) >= 0.01) {
-                                        throw new Error('Custom amounts must equal the total bill amount');
-                                    }
-                                } else if (splitType === 'percentage') {
-                                    const userPercentage = parseFloat(data.userPercentage) || 0;
+                                    billData.splits[data.shareWith] = billData.amount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
                                     billData.splits[this.currentUser.id] = (billData.amount * userPercentage / 100);
-                                    
-                                    let totalPercentage = userPercentage;
-                                    selectedPeople.forEach(personId => {
-                                        const percentInput = billForm.querySelector(`input[name="percentage-${personId}"]`);
-                                        const percent = parseFloat(percentInput?.value || 0);
-                                        totalPercentage += percent;
-                                        billData.splits[personId] = (billData.amount * percent / 100);
-                                    });
-                                    
-                                    // Validate percentage total
-                                    if (Math.abs(totalPercentage - 100) >= 0.01) {
-                                        throw new Error('Percentages must total 100%');
-                                    }
+                                    billData.splits[data.shareWith] = (billData.amount * otherPercentage / 100);
                                 }
                             }
                             
-                            let billId;
                             if (formType === 'edit-bill' && data.id) {
                                 await storage.updateBill(data.id, billData);
-                                billId = data.id;
                             } else {
-                                const newBill = await storage.addBill(billData);
-                                billId = newBill.id;
+                                await storage.addBill(billData);
                             }
-                            
-                            // Handle file attachment
-                            const billFileInput = document.getElementById('bill-attachment');
-                            if (billFileInput && billFileInput.files && billFileInput.files[0]) {
-                                const file = billFileInput.files[0];
-                                const reader = new FileReader();
-                                reader.onload = async (e) => {
-                                    try {
-                                        await storage.uploadAttachment(
-                                            billId,
-                                            file.name,
-                                            file.size,
-                                            file.type,
-                                            e.target.result // Base64 data
-                                        );
-                                    } catch (error) {
-                                        console.error('Error uploading attachment:', error);
-                                    }
-                                };
-                                reader.readAsDataURL(file);
-                            }
-                            
                             this.closeModal();
                             this.render();
                             break;
 
                         case 'add-expense':
-                        case 'edit-expense':
                             const expenseData = {
                                 name: data.name,
                                 expenseDate: data.expenseDate,
@@ -2461,88 +1662,27 @@
                                 items: this.receiptItems.filter(item => item.name && item.amount > 0)
                             };
 
-                            // Handle shared expenses - now supports multiple people
-                            const expenseForm = document.querySelector('form[data-form="add-expense"], form[data-form="edit-expense"]');
-                            const selectedExpensePeople = expenseForm.querySelectorAll('input[name="shareWith[]"]:checked');
-                            
-                            if (selectedExpensePeople.length > 0) {
-                                const selectedPeople = Array.from(selectedExpensePeople).map(cb => cb.value);
-                                expenseData.shared_with = selectedPeople;
+                            // Handle shared expenses
+                            if (data.shareWith && data.shareWith !== '') {
+                                expenseData.shared_with = [data.shareWith];
                                 expenseData.splits = {};
                                 
-                                const splitType = expenseForm.querySelector('input[name="splitType"]:checked')?.value || 'equal';
-                                const peopleCount = selectedPeople.length + 1; // +1 for creator
-                                
-                                if (splitType === 'equal') {
-                                    const perPerson = expenseData.totalAmount / peopleCount;
-                                    expenseData.splits[this.currentUser.id] = perPerson;
-                                    selectedPeople.forEach(personId => {
-                                        expenseData.splits[personId] = perPerson;
-                                    });
-                                } else if (splitType === 'custom') {
+                                if (data.splitType === 'equal') {
+                                    expenseData.splits[this.currentUser.id] = expenseData.totalAmount / 2;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount / 2;
+                                } else if (data.splitType === 'custom') {
                                     const userAmount = parseFloat(data.userAmount) || 0;
                                     expenseData.splits[this.currentUser.id] = userAmount;
-                                    
-                                    selectedPeople.forEach(personId => {
-                                        const amountInput = expenseForm.querySelector(`input[name="custom-${personId}"]`);
-                                        const amount = parseFloat(amountInput?.value || 0);
-                                        expenseData.splits[personId] = amount;
-                                    });
-                                    
-                                    // Validate total
-                                    const splitTotal = Object.values(expenseData.splits).reduce((sum, amt) => sum + amt, 0);
-                                    if (Math.abs(splitTotal - expenseData.totalAmount) >= 0.01) {
-                                        throw new Error('Custom amounts must equal the total expense amount');
-                                    }
-                                } else if (splitType === 'percentage') {
-                                    const userPercentage = parseFloat(data.userPercentage) || 0;
+                                    expenseData.splits[data.shareWith] = expenseData.totalAmount - userAmount;
+                                } else if (data.splitType === 'percentage') {
+                                    const userPercentage = parseFloat(data.userPercentage) || 50;
+                                    const otherPercentage = 100 - userPercentage;
                                     expenseData.splits[this.currentUser.id] = (expenseData.totalAmount * userPercentage / 100);
-                                    
-                                    let totalPercentage = userPercentage;
-                                    selectedPeople.forEach(personId => {
-                                        const percentInput = expenseForm.querySelector(`input[name="percentage-${personId}"]`);
-                                        const percent = parseFloat(percentInput?.value || 0);
-                                        totalPercentage += percent;
-                                        expenseData.splits[personId] = (expenseData.totalAmount * percent / 100);
-                                    });
-                                    
-                                    // Validate percentage total
-                                    if (Math.abs(totalPercentage - 100) >= 0.01) {
-                                        throw new Error('Percentages must total 100%');
-                                    }
+                                    expenseData.splits[data.shareWith] = (expenseData.totalAmount * otherPercentage / 100);
                                 }
                             }
 
-                            let expenseId;
-                            if (formType === 'edit-expense' && data.id) {
-                                await storage.updateExpense(data.id, expenseData);
-                                expenseId = data.id;
-                            } else {
-                                const newExpense = await storage.addExpense(expenseData);
-                                expenseId = newExpense.id;
-                            }
-                            
-                            // Handle file attachment
-                            const expenseFileInput = document.getElementById('expense-attachment');
-                            if (expenseFileInput && expenseFileInput.files && expenseFileInput.files[0]) {
-                                const file = expenseFileInput.files[0];
-                                const reader = new FileReader();
-                                reader.onload = async (e) => {
-                                    try {
-                                        await storage.uploadAttachment(
-                                            expenseId,
-                                            file.name,
-                                            file.size,
-                                            file.type,
-                                            e.target.result // Base64 data
-                                        );
-                                    } catch (error) {
-                                        console.error('Error uploading attachment:', error);
-                                    }
-                                };
-                                reader.readAsDataURL(file);
-                            }
-                            
+                            await storage.addExpense(expenseData);
                             this.receiptItems = [];
                             this.closeModal();
                             this.render();
@@ -2587,80 +1727,6 @@
                 setTimeout(() => {
                     const firstInput = modal.querySelector('input, select, textarea');
                     if (firstInput) firstInput.focus();
-                    
-                    // Update receipt items display if expense modal
-                    if (modalType === 'expense' && this.receiptItems.length > 0) {
-                        this.updateReceiptItemsDisplay();
-                    }
-                    
-                    // Scroll to bottom and set up auto-refresh if chat modal
-                    if (modalType === 'chat') {
-                        const chatMessages = document.getElementById('chat-messages');
-                        if (chatMessages) {
-                            chatMessages.scrollTop = chatMessages.scrollHeight;
-                        }
-                        
-                        // Auto-refresh chat messages only (not the whole modal) every 3 seconds
-                        this.chatRefreshInterval = setInterval(async () => {
-                            const currentChatMessages = document.getElementById('chat-messages');
-                            if (!currentChatMessages) return; // Chat was closed
-                            
-                            const currentScroll = currentChatMessages.scrollTop;
-                            const isAtBottom = currentChatMessages.scrollHeight - currentChatMessages.scrollTop <= currentChatMessages.clientHeight + 50;
-                            
-                            // Get updated messages
-                            const messages = await storage.getConversation(itemId);
-                            
-                            // Rebuild messages HTML
-                            let messagesHTML = '';
-                            if (messages.length === 0) {
-                                messagesHTML = '<div class="text-center py-8 text-gray-400">' +
-                                    '<svg class="w-16 h-16 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />' +
-                                    '</svg>' +
-                                    '<p class="text-sm">No messages yet</p>' +
-                                    '<p class="text-xs mt-1">Start the conversation!</p>' +
-                                    '</div>';
-                            } else {
-                                messages.forEach(msg => {
-                                    const isFromMe = msg.from_user_id === this.currentUser.id;
-                                    const timestamp = window.formatMessageTimestamp(msg.created_at);
-                                    
-                                    if (isFromMe) {
-                                        messagesHTML += 
-                                            '<div class="flex justify-end mb-3">' +
-                                            '<div class="max-w-xs lg:max-w-md">' +
-                                            '<div class="bg-purple-600 text-white rounded-lg rounded-tr-none px-4 py-2">' +
-                                            '<p class="text-sm">' + msg.message_text + '</p>' +
-                                            '</div>' +
-                                            '<p class="text-xs text-gray-400 mt-1 text-right">' + timestamp + '</p>' +
-                                            '</div>' +
-                                            '</div>';
-                                    } else {
-                                        messagesHTML += 
-                                            '<div class="flex justify-start mb-3">' +
-                                            '<div class="max-w-xs lg:max-w-md">' +
-                                            '<div class="bg-gray-200 text-gray-800 rounded-lg rounded-tl-none px-4 py-2">' +
-                                            '<p class="text-sm">' + msg.message_text + '</p>' +
-                                            '</div>' +
-                                            '<p class="text-xs text-gray-400 mt-1">' + timestamp + '</p>' +
-                                            '</div>' +
-                                            '</div>';
-                                    }
-                                });
-                            }
-                            
-                            // Update only the messages container
-                            currentChatMessages.innerHTML = messagesHTML;
-                            
-                            // Restore scroll position or go to bottom if user was at bottom
-                            if (isAtBottom) {
-                                currentChatMessages.scrollTop = currentChatMessages.scrollHeight;
-                            } else {
-                                currentChatMessages.scrollTop = currentScroll;
-                            }
-                        }, 3000);
-                    }
                 }, 100);
             }
 
@@ -2668,68 +1734,6 @@
                 const modal = document.querySelector('.fixed.inset-0');
                 if (modal) modal.remove();
                 this.receiptItems = [];
-                
-                // Clear chat refresh interval
-                if (this.chatRefreshInterval) {
-                    clearInterval(this.chatRefreshInterval);
-                    this.chatRefreshInterval = null;
-                }
-            }
-
-            async updateNotificationBadge() {
-                console.log('🔔 updateNotificationBadge called');
-                const unreadCount = await storage.getUnreadMessageCount();
-                console.log('Unread count:', unreadCount);
-                
-                // Find the red notification badge specifically (not other spans inside the button)
-                const badge = document.querySelector('button[data-modal="notifications"] span.bg-red-500');
-                const button = document.querySelector('button[data-modal="notifications"]');
-                
-                console.log('Badge element:', badge);
-                console.log('Button element:', button);
-                
-                if (unreadCount > 0) {
-                    if (badge) {
-                        console.log('Updating existing badge to:', unreadCount);
-                        badge.textContent = unreadCount;
-                    } else if (button) {
-                        console.log('Creating new badge with count:', unreadCount);
-                        const newBadge = document.createElement('span');
-                        newBadge.className = 'absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center';
-                        newBadge.textContent = unreadCount;
-                        button.style.position = 'relative'; // Ensure button has relative positioning
-                        button.appendChild(newBadge);
-                    } else {
-                        console.log('⚠️ Notification button not found in DOM!');
-                    }
-                } else {
-                    console.log('No unread messages, removing badge');
-                    if (badge) {
-                        badge.remove();
-                    }
-                }
-            }
-
-            viewAttachment(imageData, fileName) {
-                const modal = document.createElement('div');
-                modal.className = 'fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50';
-                modal.innerHTML = '<div class="relative w-full h-full flex flex-col items-center justify-center">' +
-                    '<button data-action="close-attachment" class="absolute top-4 right-4 bg-red-500 bg-opacity-70 hover:bg-opacity-90 rounded-full p-3 transition z-10 shadow-lg" style="min-width: 48px; min-height: 48px;">' +
-                    '<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />' +
-                    '</svg>' +
-                    '</button>' +
-                    '<img src="' + imageData + '" alt="' + fileName + '" class="max-w-full max-h-full object-contain rounded shadow-2xl">' +
-                    '<p class="text-white text-center mt-4 px-4">' + fileName + '</p>' +
-                    '</div>';
-                document.body.appendChild(modal);
-                
-                // Close on click outside or close button
-                modal.addEventListener('click', (e) => {
-                    if (e.target === modal || e.target.closest('[data-action="close-attachment"]')) {
-                        modal.remove();
-                    }
-                });
             }
 
             async getModalContent(type, itemId) {
@@ -2743,51 +1747,15 @@
                     } else if (type === 'bill') {
                         const bills = await storage.getUserBills();
                         item = bills.find(b => b.id === itemId);
-                    } else if (type === 'expense') {
-                        const expenses = await storage.getUserExpenses();
-                        item = expenses.find(e => e.id === itemId);
                     }
                 }
 
                 switch(type) {
                     case 'notifications':
-                        return await this.buildNotificationSettingsModal();
+                        return this.buildNotificationSettingsModal();
                         
                     case 'connections':
-                        const userConnections = await storage.getUserConnections();
-                        
-                        let connectionsList = '';
-                        if (userConnections.length > 0) {
-                            userConnections.forEach(connection => {
-                                connectionsList += 
-                                    '<div class="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 mb-2">' +
-                                    '<div class="flex items-center space-x-3">' +
-                                    '<div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">' +
-                                    '<svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
-                                    '</svg>' +
-                                    '</div>' +
-                                    '<div>' +
-                                    '<p class="font-medium">' + connection.name + '</p>' +
-                                    '<p class="text-xs text-gray-500">' + connection.email + '</p>' +
-                                    '</div>' +
-                                    '</div>' +
-                                    '<button data-action="remove-connection" data-connection-id="' + connection.connection_id + '" class="btn p-2 text-red-600 hover:text-red-800" title="Remove Partner">' +
-                                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
-                                    '</svg>' +
-                                    '</button>' +
-                                    '</div>';
-                            });
-                        } else {
-                            connectionsList = '<div class="text-center py-4 text-gray-500 text-sm">No partners connected yet</div>';
-                        }
-                        
                         return '<h3 class="text-xl font-bold mb-4">Manage Partners</h3>' +
-                            '<div class="mb-6 p-4 bg-gray-50 rounded-lg">' +
-                            '<h4 class="font-medium mb-3">Current Partners</h4>' +
-                            '<div class="space-y-2">' + connectionsList + '</div>' +
-                            '</div>' +
                             '<div class="mb-6 p-4 bg-blue-50 rounded-lg">' +
                             '<h4 class="font-medium mb-2">Invite Someone</h4>' +
                             '<p class="text-sm text-gray-600 mb-3">Generate an invite code to share bills.</p>' +
@@ -2815,70 +1783,17 @@
 
                     case 'expense':
                         const expenseConnections = await storage.getUserConnections();
-                        return this.buildExpenseModal(expenseConnections, isEdit, item);
-
-                    case 'chat':
-                        return await this.buildChatModal(itemId);
+                        return this.buildExpenseModal(expenseConnections);
 
                     default:
                         return '<p>Unknown modal type</p>';
                 }
             }
 
-            async buildNotificationSettingsModal() {
+            buildNotificationSettingsModal() {
                 const currentTiming = this.currentUser?.settings?.notification_timing || 3;
                 
-                // Get recent messages
-                const recentMessages = await storage.getRecentMessages();
-                const connections = await storage.getUserConnections();
-                
-                let messagesHTML = '';
-                if (recentMessages.length > 0) {
-                    messagesHTML = '<div class="mb-6">' +
-                        '<h4 class="font-medium mb-3 flex items-center">' +
-                        '<svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />' +
-                        '</svg>' +
-                        'Recent Messages' +
-                        '</h4>' +
-                        '<div class="space-y-2 max-h-60 overflow-y-auto">';
-                    
-                    recentMessages.forEach(msg => {
-                        const partnerId = msg.from_user_id === this.currentUser.id ? msg.to_user_id : msg.from_user_id;
-                        const partner = connections.find(c => c.id === partnerId);
-                        const isFromMe = msg.from_user_id === this.currentUser.id;
-                        const isUnread = !msg.read && msg.to_user_id === this.currentUser.id;
-                        
-                        if (partner) {
-                            const preview = msg.message_text.length > 50 ? msg.message_text.substring(0, 50) + '...' : msg.message_text;
-                            const timestamp = window.formatMessageTimestamp(msg.created_at);
-                            
-                            messagesHTML += 
-                                '<button data-action="open-chat" data-partner-id="' + partnerId + '" class="w-full text-left p-3 bg-white hover:bg-gray-50 rounded-lg border border-gray-200 transition">' +
-                                '<div class="flex items-start justify-between mb-1">' +
-                                '<div class="flex items-center space-x-2">' +
-                                '<div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">' +
-                                '<svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
-                                '</svg>' +
-                                '</div>' +
-                                '<p class="font-medium text-sm">' + partner.name + '</p>' +
-                                (isUnread ? '<span class="w-2 h-2 bg-blue-500 rounded-full"></span>' : '') +
-                                '</div>' +
-                                '<span class="text-xs text-gray-500">' + timestamp + '</span>' +
-                                '</div>' +
-                                '<p class="text-sm text-gray-600 ml-10">' + (isFromMe ? 'You: ' : '') + preview + '</p>' +
-                                '</button>';
-                        }
-                    });
-                    
-                    messagesHTML += '</div></div>';
-                }
-                
-                return '<h3 class="text-xl font-bold mb-4">Notifications</h3>' +
-                    messagesHTML +
-                    '<div class="border-t pt-4">' +
-                    '<h4 class="font-medium mb-3">Notification Settings</h4>' +
+                return '<h3 class="text-xl font-bold mb-4">Notification Settings</h3>' +
                     '<form data-form="notification-settings">' +
                     '<div class="space-y-4">' +
                     '<div>' +
@@ -2895,8 +1810,7 @@
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
                     '</div>' +
                     '</div>' +
-                    '</form>' +
-                    '</div>';
+                    '</form>';
             }
 
             buildIncomeModal(isEdit, item) {
@@ -3010,98 +1924,41 @@
                 
                 let sharingSection = '';
                 if (connections.length > 0) {
-                    let connectionCheckboxes = '';
-                    for (const conn of connections) {
-                        connectionCheckboxes += 
-                            '<label class="flex items-center p-2 hover:bg-blue-100 rounded cursor-pointer">' +
-                            '<input type="checkbox" name="shareWith[]" value="' + conn.id + '" class="mr-3 form-checkbox h-5 w-5 text-purple-600" onchange="window.updateBillSplitPreview()">' +
-                            '<div class="flex-1">' +
-                            '<p class="font-medium">' + conn.name + '</p>' +
-                            '<p class="text-xs text-gray-500">' + conn.email + '</p>' +
-                            '</div>' +
-                            '</label>';
-                    }
-                    
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
-                        '<h4 class="font-medium mb-3">Share this bill?</h4>' +
-                        '<div class="space-y-1 mb-3 max-h-40 overflow-y-auto border border-blue-200 rounded p-2 bg-white" id="people-selection-bill">' +
-                        connectionCheckboxes +
-                        '</div>' +
-                        '<div id="split-options-bill" style="display:none;">' +
+                        '<h4 class="font-medium mb-2">Share this bill?</h4>' +
+                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        connectionOptions +
+                        '</select>' +
+                        '<div id="split-options" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="equal" checked class="mr-2" onchange="window.updateBillSplitPreview()">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="percentage" class="mr-2" onchange="window.updateBillSplitPreview()">' +
+                        '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
                         '<span class="text-sm">Split by percentage</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="custom" class="mr-2" onchange="window.updateBillSplitPreview()">' +
+                        '<input type="radio" name="splitType" value="custom" class="mr-2">' +
                         '<span class="text-sm">Custom amounts</span>' +
                         '</label>' +
                         '</div>' +
-                        
-                        // Equal split preview
-                        '<div id="equal-split-preview-bill" class="p-3 bg-white rounded border border-blue-200">' +
-                        '<div class="text-sm text-gray-600 space-y-1">' +
-                        '<div class="flex justify-between"><span>You:</span><span id="equal-you-amount-bill">$0.00</span></div>' +
-                        '<div id="equal-others-list-bill"></div>' +
-                        '<div class="border-t pt-1 mt-1 font-medium flex justify-between">' +
-                        '<span>Per person:</span><span id="equal-per-person-bill">$0.00</span>' +
-                        '</div>' +
-                        '</div>' +
-                        '</div>' +
-                        
-                        // Percentage split inputs
-                        '<div id="percentage-split-bill" style="display:none;" class="space-y-2">' +
-                        '<div class="p-3 bg-white rounded border border-blue-200">' +
-                        '<div class="space-y-2" id="percentage-inputs-bill">' +
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">You:</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<input type="number" name="userPercentage" placeholder="0" min="0" max="100" step="0.01" value="" class="form-input w-20 text-sm" oninput="window.updateBillSplitPreview()">' +
+                        '<div id="percentage-split" style="display:none;">' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
                         '<span class="text-sm">%</span>' +
                         '</div>' +
-                        '</div>' +
-                        '<div id="percentage-others-list-bill"></div>' +
-                        '</div>' +
-                        '<div class="border-t pt-2 mt-2">' +
-                        '<div class="flex justify-between text-sm">' +
-                        '<span>Total:</span><span id="percentage-total-bill" class="font-medium">0%</span>' +
-                        '</div>' +
-                        '<div id="percentage-error-bill" class="text-xs text-red-600 mt-1" style="display:none;">Must total 100%</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
                         '</div>' +
                         '</div>' +
+                        '<div id="custom-split" style="display:none;">' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
+                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
-                        
-                        // Custom amounts inputs
-                        '<div id="custom-split-bill" style="display:none;" class="space-y-2">' +
-                        '<div class="p-3 bg-white rounded border border-blue-200">' +
-                        '<div class="space-y-2" id="custom-inputs-bill">' +
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">You:</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<span class="text-sm">$</span>' +
-                        '<input type="number" name="userAmount" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateBillSplitPreview()">' +
-                        '</div>' +
-                        '</div>' +
-                        '<div id="custom-others-list-bill"></div>' +
-                        '</div>' +
-                        '<div class="border-t pt-2 mt-2">' +
-                        '<div class="flex justify-between text-sm">' +
-                        '<span>Split total:</span><span id="custom-total-bill" class="font-medium">$0.00</span>' +
-                        '</div>' +
-                        '<div class="flex justify-between text-sm text-gray-500">' +
-                        '<span>Bill total:</span><span id="custom-bill-total">$0.00</span>' +
-                        '</div>' +
-                        '<div id="custom-error-bill" class="text-xs text-red-600 mt-1" style="display:none;">Must equal bill total</div>' +
-                        '</div>' +
-                        '</div>' +
-                        '</div>' +
-                        
                         '</div>' +
                         '</div>';
                 } else {
@@ -3115,16 +1972,11 @@
                     hiddenInput +
                     '<div class="space-y-4">' +
                     '<input type="text" name="name" placeholder="Bill Name" required value="' + nameValue + '" class="form-input">' +
-                    '<input type="number" name="amount" placeholder="Total Amount" step="0.01" required value="' + amountValue + '" class="form-input" oninput="window.updateBillSplitPreview()">' +
+                    '<input type="number" name="amount" placeholder="Total Amount" step="0.01" required value="' + amountValue + '" class="form-input">' +
                     '<input type="date" name="dueDate" required value="' + dueDateValue + '" class="form-input">' +
                     '<select name="category" class="form-input">' + categoryOptions + '</select>' +
                     recurringSection +
                     sharingSection +
-                    '<div class="p-4 bg-gray-50 rounded-lg">' +
-                    '<label class="block text-sm font-medium mb-2">📎 Attach Receipt/Image</label>' +
-                    '<input type="file" id="bill-attachment" accept="image/*" class="form-input">' +
-                    '<p class="text-xs text-gray-500 mt-1">Upload a photo of your receipt (optional)</p>' +
-                    '</div>' +
                     '<div class="grid grid-cols-2 gap-3">' +
                     '<button type="submit" class="btn btn-primary">' + submitText + ' Bill</button>' +
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
@@ -3133,129 +1985,51 @@
                     '</form>';
             }
 
-            buildExpenseModal(connections, isEdit = false, item = null) {
-                const editTitle = isEdit ? 'Edit' : 'Add';
-                const formType = isEdit ? 'edit-expense' : 'add-expense';
-                const submitText = isEdit ? 'Update' : 'Add';
+            buildExpenseModal(connections) {
+                this.receiptItems = [{ name: '', amount: 0 }];
                 
-                // Pre-fill data if editing
-                const nameValue = item?.name || '';
-                const dateValue = item?.due_date ? item.due_date.split('T')[0] : '';
-                const hiddenInput = isEdit ? '<input type="hidden" name="id" value="' + item.id + '">' : '';
-                
-                // Parse existing receipt items if editing
-                if (isEdit && item) {
-                    try {
-                        if (item.description) {
-                            this.receiptItems = JSON.parse(item.description);
-                        } else {
-                            this.receiptItems = [{ name: '', amount: item.amount || 0 }];
-                        }
-                    } catch (e) {
-                        this.receiptItems = [{ name: '', amount: item.amount || 0 }];
-                    }
-                } else {
-                    this.receiptItems = [{ name: '', amount: 0 }];
+                let connectionOptions = '<option value="">Just me (no sharing)</option>';
+                for (const conn of connections) {
+                    connectionOptions += '<option value="' + conn.id + '">' + conn.name + '</option>';
                 }
-                
-                // Get shared_with array for pre-checking
-                const sharedWith = item?.shared_with || [];
                 
                 let sharingSection = '';
                 if (connections.length > 0) {
-                    let connectionCheckboxes = '';
-                    for (const conn of connections) {
-                        const isChecked = sharedWith.includes(conn.id) ? ' checked' : '';
-                        connectionCheckboxes += 
-                            '<label class="flex items-center p-2 hover:bg-blue-100 rounded cursor-pointer">' +
-                            '<input type="checkbox" name="shareWith[]" value="' + conn.id + '" class="mr-3 form-checkbox h-5 w-5 text-purple-600"' + isChecked + ' onchange="window.updateExpenseSplitPreview()">' +
-                            '<div class="flex-1">' +
-                            '<p class="font-medium">' + conn.name + '</p>' +
-                            '<p class="text-xs text-gray-500">' + conn.email + '</p>' +
-                            '</div>' +
-                            '</label>';
-                    }
-                    
                     sharingSection = '<div class="p-4 bg-blue-50 rounded-lg">' +
-                        '<h4 class="font-medium mb-3">Share this expense?</h4>' +
-                        '<div class="space-y-1 mb-3 max-h-40 overflow-y-auto border border-blue-200 rounded p-2 bg-white" id="people-selection">' +
-                        connectionCheckboxes +
-                        '</div>' +
+                        '<h4 class="font-medium mb-2">Share this expense?</h4>' +
+                        '<select name="shareWith" class="form-input mb-3" onchange="window.toggleSplitType(this.value)">' +
+                        connectionOptions +
+                        '</select>' +
                         '<div id="split-options" style="display:none;">' +
                         '<label class="block text-sm font-medium mb-2">How to split:</label>' +
                         '<div class="space-y-2 mb-3">' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="equal" checked class="mr-2" onchange="window.updateExpenseSplitPreview()">' +
-                        '<span class="text-sm">Split equally</span>' +
+                        '<input type="radio" name="splitType" value="equal" checked class="mr-2">' +
+                        '<span class="text-sm">Split equally (50/50)</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="percentage" class="mr-2" onchange="window.updateExpenseSplitPreview()">' +
+                        '<input type="radio" name="splitType" value="percentage" class="mr-2">' +
                         '<span class="text-sm">Split by percentage</span>' +
                         '</label>' +
                         '<label class="flex items-center">' +
-                        '<input type="radio" name="splitType" value="custom" class="mr-2" onchange="window.updateExpenseSplitPreview()">' +
+                        '<input type="radio" name="splitType" value="custom" class="mr-2">' +
                         '<span class="text-sm">Custom amounts</span>' +
                         '</label>' +
                         '</div>' +
-                        
-                        // Equal split preview
-                        '<div id="equal-split-preview" class="p-3 bg-white rounded border border-blue-200">' +
-                        '<div class="text-sm text-gray-600 space-y-1">' +
-                        '<div class="flex justify-between"><span>You:</span><span id="equal-you-amount">$0.00</span></div>' +
-                        '<div id="equal-others-list"></div>' +
-                        '<div class="border-t pt-1 mt-1 font-medium flex justify-between">' +
-                        '<span>Per person:</span><span id="equal-per-person">$0.00</span>' +
-                        '</div>' +
-                        '</div>' +
-                        '</div>' +
-                        
-                        // Percentage split inputs
-                        '<div id="percentage-split" style="display:none;" class="space-y-2">' +
-                        '<div class="p-3 bg-white rounded border border-blue-200">' +
-                        '<div class="space-y-2" id="percentage-inputs">' +
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">You:</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<input type="number" name="userPercentage" placeholder="0" min="0" max="100" step="0.01" value="" class="form-input w-20 text-sm" oninput="window.updateExpenseSplitPreview()">' +
+                        '<div id="percentage-split" style="display:none;">' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your percentage:</label>' +
+                        '<div class="flex items-center space-x-2">' +
+                        '<input type="number" name="userPercentage" placeholder="50" min="0" max="100" step="1" value="50" class="form-input flex-1" onchange="window.updatePercentageOther(this.value)">' +
                         '<span class="text-sm">%</span>' +
                         '</div>' +
-                        '</div>' +
-                        '<div id="percentage-others-list"></div>' +
-                        '</div>' +
-                        '<div class="border-t pt-2 mt-2">' +
-                        '<div class="flex justify-between text-sm">' +
-                        '<span>Total:</span><span id="percentage-total" class="font-medium">0%</span>' +
-                        '</div>' +
-                        '<div id="percentage-error" class="text-xs text-red-600 mt-1" style="display:none;">Must total 100%</div>' +
+                        '<div class="mt-2 text-xs text-gray-500">' +
+                        '<span id="other-percentage">Other person: 50%</span>' +
                         '</div>' +
                         '</div>' +
+                        '<div id="custom-split" style="display:none;">' +
+                        '<label class="block text-sm text-gray-600 mb-1">Your amount:</label>' +
+                        '<input type="number" name="userAmount" placeholder="Your portion" step="0.01" class="form-input">' +
                         '</div>' +
-                        
-                        // Custom amounts inputs
-                        '<div id="custom-split" style="display:none;" class="space-y-2">' +
-                        '<div class="p-3 bg-white rounded border border-blue-200">' +
-                        '<div class="space-y-2" id="custom-inputs">' +
-                        '<div class="flex justify-between items-center">' +
-                        '<span class="text-sm">You:</span>' +
-                        '<div class="flex items-center space-x-1">' +
-                        '<span class="text-sm">$</span>' +
-                        '<input type="number" name="userAmount" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateExpenseSplitPreview()">' +
-                        '</div>' +
-                        '</div>' +
-                        '<div id="custom-others-list"></div>' +
-                        '</div>' +
-                        '<div class="border-t pt-2 mt-2">' +
-                        '<div class="flex justify-between text-sm">' +
-                        '<span>Split total:</span><span id="custom-total" class="font-medium">$0.00</span>' +
-                        '</div>' +
-                        '<div class="flex justify-between text-sm text-gray-500">' +
-                        '<span>Expense total:</span><span id="custom-expense-total">$0.00</span>' +
-                        '</div>' +
-                        '<div id="custom-error" class="text-xs text-red-600 mt-1" style="display:none;">Must equal expense total</div>' +
-                        '</div>' +
-                        '</div>' +
-                        '</div>' +
-                        
                         '</div>' +
                         '</div>';
                 } else {
@@ -3264,12 +2038,11 @@
                         '</div>';
                 }
                 
-                return '<h3 class="text-xl font-bold mb-4">' + editTitle + ' Expense</h3>' +
-                    '<form data-form="' + formType + '">' +
-                    hiddenInput +
+                return '<h3 class="text-xl font-bold mb-4">Add Expense</h3>' +
+                    '<form data-form="add-expense">' +
                     '<div class="space-y-4">' +
-                    '<input type="text" name="name" placeholder="Expense Name" required value="' + nameValue + '" class="form-input">' +
-                    '<input type="date" name="expenseDate" required value="' + dateValue + '" class="form-input">' +
+                    '<input type="text" name="name" placeholder="Expense Name" required class="form-input">' +
+                    '<input type="date" name="expenseDate" required class="form-input">' +
                     '<div class="space-y-3">' +
                     '<div class="flex justify-between items-center">' +
                     '<h4 class="font-medium">Receipt Items</h4>' +
@@ -3280,107 +2053,12 @@
                     '<input type="hidden" name="totalAmount" value="0">' +
                     '</div>' +
                     sharingSection +
-                    '<div class="p-4 bg-gray-50 rounded-lg">' +
-                    '<label class="block text-sm font-medium mb-2">📎 Attach Receipt/Image</label>' +
-                    '<input type="file" id="expense-attachment" accept="image/*" class="form-input">' +
-                    '<p class="text-xs text-gray-500 mt-1">Upload a photo of your receipt (optional)</p>' +
-                    '</div>' +
                     '<div class="grid grid-cols-2 gap-3">' +
-                    '<button type="submit" class="btn btn-primary">' + submitText + ' Expense</button>' +
+                    '<button type="submit" class="btn btn-primary">Add Expense</button>' +
                     '<button type="button" data-action="close-modal" class="btn btn-secondary">Cancel</button>' +
                     '</div>' +
                     '</div>' +
                     '</form>';
-            }
-
-            async buildChatModal(partnerId) {
-                // Get partner info
-                const connections = await storage.getUserConnections();
-                const partner = connections.find(c => c.id === partnerId);
-                
-                if (!partner) {
-                    return '<p class="text-center text-gray-500">Partner not found</p>';
-                }
-                
-                // Load conversation
-                const messages = await storage.getConversation(partnerId);
-                
-                // Mark messages as read
-                await storage.markMessagesAsRead(partnerId);
-                
-                // Build message thread
-                let messagesHTML = '';
-                if (messages.length === 0) {
-                    messagesHTML = '<div class="text-center py-8 text-gray-400">' +
-                        '<svg class="w-16 h-16 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />' +
-                        '</svg>' +
-                        '<p class="text-sm">No messages yet</p>' +
-                        '<p class="text-xs mt-1">Start the conversation!</p>' +
-                        '</div>';
-                } else {
-                    messages.forEach(msg => {
-                        const isFromMe = msg.from_user_id === this.currentUser.id;
-                        const timestamp = window.formatMessageTimestamp(msg.created_at);
-                        
-                        if (isFromMe) {
-                            messagesHTML += 
-                                '<div class="flex justify-end mb-3">' +
-                                '<div class="max-w-xs lg:max-w-md">' +
-                                '<div class="bg-purple-600 text-white rounded-lg rounded-tr-none px-4 py-2">' +
-                                '<p class="text-sm">' + msg.message_text + '</p>' +
-                                '</div>' +
-                                '<p class="text-xs text-gray-400 mt-1 text-right">' + timestamp + '</p>' +
-                                '</div>' +
-                                '</div>';
-                        } else {
-                            messagesHTML += 
-                                '<div class="flex justify-start mb-3">' +
-                                '<div class="max-w-xs lg:max-w-md">' +
-                                '<div class="bg-gray-200 text-gray-800 rounded-lg rounded-tl-none px-4 py-2">' +
-                                '<p class="text-sm">' + msg.message_text + '</p>' +
-                                '</div>' +
-                                '<p class="text-xs text-gray-400 mt-1">' + timestamp + '</p>' +
-                                '</div>' +
-                                '</div>';
-                        }
-                    });
-                }
-                
-                return '<div class="flex flex-col h-full">' +
-                    '<div class="flex items-center justify-between p-4 border-b">' +
-                    '<div class="flex items-center space-x-3">' +
-                    '<div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">' +
-                    '<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
-                    '</svg>' +
-                    '</div>' +
-                    '<div>' +
-                    '<h3 class="font-bold">' + partner.name + '</h3>' +
-                    '<p class="text-xs text-gray-500">' + partner.email + '</p>' +
-                    '</div>' +
-                    '</div>' +
-                    '<button data-action="close-modal" class="text-gray-400 hover:text-gray-600">' +
-                    '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />' +
-                    '</svg>' +
-                    '</button>' +
-                    '</div>' +
-                    '<div id="chat-messages" class="flex-1 overflow-y-auto p-4" style="max-height: 400px;">' +
-                    messagesHTML +
-                    '</div>' +
-                    '<div class="p-4 border-t">' +
-                    '<form data-form="send-message" class="flex space-x-2">' +
-                    '<input type="hidden" name="partnerId" value="' + partnerId + '">' +
-                    '<input type="text" name="messageText" placeholder="Type a message..." required class="flex-1 form-input" autocomplete="off">' +
-                    '<button type="submit" class="btn btn-primary px-4">' +
-                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />' +
-                    '</svg>' +
-                    '</button>' +
-                    '</form>' +
-                    '</div>' +
-                    '</div>';
             }
 
             // FIXED: Enhanced getBillStatus to handle all payment scenarios correctly
@@ -3488,38 +2166,15 @@
                 if (this.currentView === 'login') {
                     app.innerHTML = this.renderLogin();
                 } else {
-                    // Only fetch data needed for the current tab
-                    let totals = null;
-                    let incomes = [];
-                    let bills = [];
-                    let expenses = [];
-                    let history = [];
-                    let notifications = [];
-                    let connections = [];
-                    let unreadCount = 0;
+                    const totals = await this.calculateTotals();
+                    const incomes = await storage.getUserIncomes();
+                    const bills = await storage.getUserBills();
+                    const expenses = await storage.getUserExpenses();
+                    const history = await storage.getPaymentHistory();
+                    const notifications = await storage.getUpcomingBillNotifications();
+                    const connections = await storage.getUserConnections(); // Get connections for dashboard
                     
-                    // Always fetch unread count (for badge)
-                    unreadCount = await storage.getUnreadMessageCount();
-                    
-                    // Fetch based on active tab
-                    if (this.activeTab === 'dashboard') {
-                        // Dashboard needs totals, notifications, and connections
-                        totals = await this.calculateTotals();
-                        notifications = await storage.getUpcomingBillNotifications();
-                        connections = await storage.getUserConnections();
-                    } else if (this.activeTab === 'income') {
-                        incomes = await storage.getUserIncomes();
-                    } else if (this.activeTab === 'bills') {
-                        bills = await storage.getUserBills();
-                        connections = await storage.getUserConnections(); // Needed for unpaid summary
-                    } else if (this.activeTab === 'expenses') {
-                        expenses = await storage.getUserExpenses();
-                        connections = await storage.getUserConnections(); // Needed for unpaid summary
-                    } else if (this.activeTab === 'history') {
-                        history = await storage.getPaymentHistory();
-                    }
-                    
-                    app.innerHTML = await this.renderApp(totals, incomes, bills, expenses, history, notifications, connections, unreadCount);
+                    app.innerHTML = this.renderApp(totals, incomes, bills, expenses, history, notifications, connections);
                 }
             }
 
@@ -3532,7 +2187,7 @@
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
                     '</svg>' +
                     '</div>' +
-                    '<h1 class="text-3xl font-bold text-gray-800">Budget Mate</h1>' +
+                    '<h1 class="text-3xl font-bold text-gray-800">Smart Budget</h1>' +
                     '<p class="text-gray-600 mt-2">Multi-Device Financial Management</p>' +
                     '</div>' +
                     '<div id="login-form">' +
@@ -3565,7 +2220,7 @@
             }
 
             // FIXED: Updated tab structure (removed connections tab, added mobile improvements)
-            async renderApp(totals, incomes, bills, expenses, history, notifications, connections, unreadCount = 0) {
+            renderApp(totals, incomes, bills, expenses, history, notifications, connections) {
                 const userName = this.currentUser?.name || 'User';
                 const tabs = ['dashboard', 'income', 'bills', 'expenses', 'history']; // REMOVED: connections tab
                 
@@ -3588,15 +2243,15 @@
                 
                 let mainContent = '';
                 if (this.activeTab === 'dashboard') {
-                    mainContent = await this.renderDashboard(totals, notifications, connections);
+                    mainContent = this.renderDashboard(totals, notifications, connections);
                 } else if (this.activeTab === 'income') {
                     mainContent = this.renderIncomeTab(incomes);
                 } else if (this.activeTab === 'bills') {
-                    mainContent = await this.renderBillsTab(bills);
+                    mainContent = this.renderBillsTab(bills);
                 } else if (this.activeTab === 'expenses') {
-                    mainContent = await this.renderExpensesTab(expenses);
+                    mainContent = this.renderExpensesTab(expenses);
                 } else if (this.activeTab === 'history') {
-                    mainContent = await this.renderHistoryTab(history);
+                    mainContent = this.renderHistoryTab(history);
                 }
                 
                 return '<div class="min-h-screen bg-gray-50">' +
@@ -3610,15 +2265,14 @@
                     '</svg>' +
                     '</div>' +
                     '<div>' +
-                    '<h1 class="text-xl font-bold">Budget Mate</h1>' +
+                    '<h1 class="text-xl font-bold">Smart Budget</h1>' +
                     '<p class="text-sm opacity-90">Welcome, ' + userName + '</p>' +
                     '</div>' +
                     '</div>' +
                     '<div class="flex items-center space-x-2">' +
-                    '<button data-action="show-modal" data-modal="notifications" class="btn p-2 relative">' +
-                    (unreadCount > 0 ? '<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">' + unreadCount + '</span>' : '') +
+                    '<button data-action="show-modal" data-modal="notifications" class="btn p-2">' +
                     '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z" />' +
                     '</svg>' +
                     '</button>' +
                     '<button data-action="toggle-private" class="btn p-2">' + privateModeIcon + '</button>' +
@@ -3643,28 +2297,7 @@
             }
 
             // UPDATED: Dashboard now includes Partners Connected section
-            async renderDashboard(totals, notifications, connections) {
-                // Calculate unpaid amounts (only if user is logged in)
-                let totalUnpaid = 0;
-                let unpaidByPerson = {};
-                let totalIOwe = 0;
-                let iOweByPerson = {};
-                
-                if (this.currentUser) {
-                    try {
-                        totalUnpaid = await storage.getTotalUnpaidShared();
-                        unpaidByPerson = await storage.calculateUnpaidByPerson();
-                        iOweByPerson = await storage.calculateWhatIOwe();
-                        
-                        // Calculate total I owe
-                        for (const [person, amounts] of Object.entries(iOweByPerson)) {
-                            totalIOwe += amounts.total;
-                        }
-                    } catch (error) {
-                        console.log('Could not fetch unpaid amounts:', error);
-                    }
-                }
-                
+            renderDashboard(totals, notifications, connections) {
                 const incomeBlurClass = this.privateMode ? 'filter blur-sm' : '';
                 const remainingBlurClass = this.privateMode ? 'filter blur-sm' : '';
                 const remainingColorClass = totals.remaining >= 0 ? 'text-green-600' : 'text-red-600';
@@ -3709,77 +2342,12 @@
                         '</div>';
                 }
 
-                // ADDED: Money Owed to You card
-                let unpaidCard = '';
-                if (totalUnpaid > 0) {
-                    let personBreakdown = '';
-                    for (const [person, amounts] of Object.entries(unpaidByPerson)) {
-                        personBreakdown += 
-                            '<div class="flex justify-between items-center py-1">' +
-                            '<span class="text-sm text-gray-600">' + person + '</span>' +
-                            '<span class="text-sm font-semibold text-gray-800">$' + amounts.total.toFixed(2) + '</span>' +
-                            '</div>';
-                    }
-                    
-                    unpaidCard = 
-                        '<div class="card fade-in mb-6">' +
-                        '<div class="p-6 bg-gradient-to-r from-green-50 to-emerald-50">' +
-                        '<div class="flex items-center justify-between mb-4">' +
-                        '<div>' +
-                        '<h3 class="text-lg font-semibold text-gray-800">Money Owed to You</h3>' +
-                        '<p class="text-sm text-gray-600">Total from unpaid bills & expenses</p>' +
-                        '</div>' +
-                        '<svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
-                        '</svg>' +
-                        '</div>' +
-                        '<p class="text-4xl font-bold text-green-600 mb-4">$' + totalUnpaid.toFixed(2) + '</p>' +
-                        '<div class="border-t border-green-200 pt-3">' +
-                        personBreakdown +
-                        '</div>' +
-                        '</div>' +
-                        '</div>';
-                }
-
-                // ADDED: Money You Owe card
-                let iOweCard = '';
-                if (totalIOwe > 0) {
-                    let personBreakdown = '';
-                    for (const [person, amounts] of Object.entries(iOweByPerson)) {
-                        personBreakdown += 
-                            '<div class="flex justify-between items-center py-1">' +
-                            '<span class="text-sm text-gray-600">' + person + '</span>' +
-                            '<span class="text-sm font-semibold text-gray-800">$' + amounts.total.toFixed(2) + '</span>' +
-                            '</div>';
-                    }
-                    
-                    iOweCard = 
-                        '<div class="card fade-in mb-6">' +
-                        '<div class="p-6 bg-gradient-to-r from-red-50 to-pink-50">' +
-                        '<div class="flex items-center justify-between mb-4">' +
-                        '<div>' +
-                        '<h3 class="text-lg font-semibold text-gray-800">Money You Owe</h3>' +
-                        '<p class="text-sm text-gray-600">Total unpaid bills & expenses</p>' +
-                        '</div>' +
-                        '<svg class="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
-                        '</svg>' +
-                        '</div>' +
-                        '<p class="text-4xl font-bold text-red-600 mb-4">$' + totalIOwe.toFixed(2) + '</p>' +
-                        '<div class="border-t border-red-200 pt-3">' +
-                        personBreakdown +
-                        '</div>' +
-                        '</div>' +
-                        '</div>';
-                }
-
-                                // ADDED: Partners Connected section for dashboard
+                // ADDED: Partners Connected section for dashboard
                 let partnersSection = '';
                 if (connections.length > 0) {
                     let partnersHTML = '';
                     connections.slice(0, 3).forEach(connection => {
-                        partnersHTML += '<div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
-                            '<div class="flex items-center space-x-2 flex-1">' +
+                        partnersHTML += '<div class="flex items-center space-x-2 p-2 bg-gray-50 rounded-lg">' +
                             '<div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">' +
                             '<svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
                             '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />' +
@@ -3789,12 +2357,7 @@
                             '<p class="text-sm font-medium truncate">' + connection.name + '</p>' +
                             '<p class="text-xs text-gray-500 truncate">' + connection.email + '</p>' +
                             '</div>' +
-                            '</div>' +
-                            '<button data-action="open-chat" data-partner-id="' + connection.id + '" class="btn p-2 text-blue-600 hover:text-blue-800" title="Message">' +
-                            '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />' +
-                            '</svg>' +
-                            '</button>' +
+                            '<span class="connection-badge connection-active text-xs">Connected</span>' +
                             '</div>';
                     });
 
@@ -3805,12 +2368,8 @@
                     partnersSection = '<div class="card card-mobile mb-6">' +
                         '<div class="flex justify-between items-center mb-4">' +
                         '<h3 class="text-lg font-bold flex items-center">' +
-                        '<svg class="w-5 h-5 mr-2 text-purple-600" viewBox="330 215 65 110" xmlns="http://www.w3.org/2000/svg">' +
-                        '<ellipse cx="348.5" cy="303.0" rx="17.5" ry="18.0" fill="#ebd2f9" stroke="currentColor" stroke-width="4" />' +
-                        '<ellipse cx="377.5" cy="257.5" rx="13.5" ry="13.5" fill="#ebd2f9" stroke="currentColor" stroke-width="4" />' +
-                        '<ellipse cx="344.5" cy="229.0" rx="10.5" ry="11.0" fill="#ebd2f9" stroke="currentColor" stroke-width="4" />' +
-                        '<line x1="360.0" y1="288.0" x2="371.0" y2="269.0" stroke="currentColor" stroke-width="5" />' +
-                        '<line x1="369.0" y1="248.0" x2="353.0" y2="237.0" stroke="currentColor" stroke-width="5" />' +
+                        '<svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
                         '</svg>' +
                         'Partners Connected' +
                         '</h3>' +
@@ -3822,12 +2381,8 @@
                     partnersSection = '<div class="card card-mobile mb-6">' +
                         '<div class="flex justify-between items-center mb-4">' +
                         '<h3 class="text-lg font-bold flex items-center">' +
-                        '<svg class="w-5 h-5 mr-2 text-purple-600" viewBox="330 215 65 110" xmlns="http://www.w3.org/2000/svg">' +
-                        '<ellipse cx="348.5" cy="303.0" rx="17.5" ry="18.0" fill="#ebd2f9" stroke="currentColor" stroke-width="4" />' +
-                        '<ellipse cx="377.5" cy="257.5" rx="13.5" ry="13.5" fill="#ebd2f9" stroke="currentColor" stroke-width="4" />' +
-                        '<ellipse cx="344.5" cy="229.0" rx="10.5" ry="11.0" fill="#ebd2f9" stroke="currentColor" stroke-width="4" />' +
-                        '<line x1="360.0" y1="288.0" x2="371.0" y2="269.0" stroke="currentColor" stroke-width="5" />' +
-                        '<line x1="369.0" y1="248.0" x2="353.0" y2="237.0" stroke="currentColor" stroke-width="5" />' +
+                        '<svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />' +
                         '</svg>' +
                         'Partners Connected' +
                         '</h3>' +
@@ -3842,8 +2397,6 @@
                 
                 return '<div class="space-y-6 fade-in">' +
                     notificationsSection +
-                    unpaidCard +
-                    iOweCard +
                     partnersSection +
                     '<div class="grid-responsive">' +
                     '<div class="card card-mobile">' +
@@ -3904,7 +2457,7 @@
                     '</button>' +
                     '<button data-action="show-modal" data-modal="notifications" class="card card-mobile hover:shadow-lg transition flex flex-col items-center space-y-2 btn">' +
                     '<svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z" />' +
                     '</svg>' +
                     '<span class="text-sm font-medium">Notifications</span>' +
                     '</button>' +
@@ -3972,115 +2525,7 @@
                     '</div>';
             }
 
-            async renderBillsTab(bills) {
-
-
-                // Calculate unpaid amounts by person (only if user is logged in)
-
-
-                let unpaidByPerson = {};
-                let iOweByPerson = {};
-                
-                if (this.currentUser) {
-                    try {
-                        unpaidByPerson = await storage.calculateUnpaidByPerson();
-                        iOweByPerson = await storage.calculateWhatIOwe();
-                    } catch (error) {
-                        console.log('Could not fetch unpaid amounts:', error);
-                    }
-                }
-
-
-                
-
-
-                // Build unpaid summary card
-
-
-                let unpaidSummary = '';
-
-
-                if (Object.keys(unpaidByPerson).length > 0) {
-
-
-                    let billsOwed = '';
-
-
-                    for (const [person, amounts] of Object.entries(unpaidByPerson)) {
-
-
-                        if (amounts.bills > 0) {
-
-
-                            billsOwed += 
-
-
-                                '<div class="flex justify-between items-center py-2 border-b border-blue-100">' +
-
-
-                                '<span class="text-blue-800 font-medium">' + person + '</span>' +
-
-
-                                '<span class="font-bold text-blue-900 text-lg">$' + amounts.bills.toFixed(2) + '</span>' +
-
-
-                                '</div>';
-
-
-                        }
-
-
-                    }
-
-
-                    
-
-
-                    if (billsOwed) {
-
-
-                        unpaidSummary = 
-
-
-                            '<div class="card fade-in mb-4">' +
-
-
-                            '<div class="p-4 bg-green-50 border-l-4 border-green-500">' +
-
-
-                            '<div class="flex items-center gap-2 mb-3">' +
-
-
-                            '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-
-
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
-
-
-                            '</svg>' +
-
-
-                            '<h3 class="font-bold text-green-900"><span class="inline-block w-3 h-3 bg-green-500 rounded-full mr-2"></span>Money Owed to You (Bills)</h3>' +
-
-
-                            '</div>' +
-
-
-                            billsOwed +
-
-
-                            '</div>' +
-
-
-                            '</div>';
-
-
-                    }
-
-
-                }
-
-
+            renderBillsTab(bills) {
                 let billsContent = '';
                 
                 if (bills.length === 0) {
@@ -4126,32 +2571,6 @@
                             actionButton = '<button data-action="mark-paid" data-bill-id="' + bill.id + '" data-shared="' + isShared + '" data-share-id="' + shareId + '" class="w-full mt-3 btn btn-success">Mark as Paid</button>';
                         }
                         
-                        // Fetch attachments for this bill
-                        const attachments = await storage.getAttachments(bill.id);
-                        let attachmentSection = '';
-                        if (attachments.length > 0) {
-                            attachmentSection = '<div class="mt-3 pt-3 border-t border-gray-200">' +
-                                '<div class="flex items-center gap-2 mb-2">' +
-                                '<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />' +
-                                '</svg>' +
-                                '<span class="text-sm font-medium text-gray-700">' + attachments.length + ' attachment' + (attachments.length > 1 ? 's' : '') + '</span>' +
-                                '</div>' +
-                                '<div class="flex flex-wrap gap-2">';
-                            
-                            attachments.forEach(att => {
-                                attachmentSection += 
-                                    '<div class="relative group">' +
-                                    '<img src="' + att.file_data + '" alt="' + att.file_name + '" class="w-20 h-20 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-75" data-action="view-attachment" data-attachment-data="' + att.file_data + '" data-attachment-name="' + att.file_name + '">' +
-                                    '<button data-action="delete-attachment" data-attachment-id="' + att.id + '" class="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition" title="Delete">' +
-                                    '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>' +
-                                    '</button>' +
-                                    '</div>';
-                            });
-                            
-                            attachmentSection += '</div></div>';
-                        }
-                        
                         billsList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
                             '<div class="flex items-center justify-between mb-3">' +
                             '<div class="flex items-center space-x-4 flex-1">' +
@@ -4177,12 +2596,7 @@
                             totalInfo +
                             '<span class="' + status.class + '">' + status.status + '</span>' +
                             '</div>' +
-                            '<button data-action="edit-bill" data-bill-id="' + bill.id + '" class="btn p-2 text-blue-600 hover:text-blue-800" title="Edit Bill">' +
-                            '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' + 
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />' +
-                            '</svg>' +
-                            '</button>' +
-                            '<button data-action="delete-bill" data-bill-id="' + bill.id + '" class="btn p-2 text-red-600 hover:text-red-800" title="Delete Bill">' +
+                            '<button data-action="delete-bill" data-bill-id="' + bill.id + '" class="btn p-2 text-red-600 hover:text-red-800">' +
                             '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' + 
                             '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
                             '</svg>' +
@@ -4190,44 +2604,13 @@
                             '</div>' +
                             '</div>' +
                             splitDetails +
-                            attachmentSection +
                             actionButton +
                             '</div>';
                     }
                     billsContent = '<div class="space-y-3">' + billsList + '</div>';
                 }
                 
-                // Build Money You Owe summary (Bills - Red)
-                let iOweSummary = '';
-                if (Object.keys(iOweByPerson).length > 0) {
-                    let billsIOwe = '';
-                    for (const [person, amounts] of Object.entries(iOweByPerson)) {
-                        if (amounts.bills > 0) {
-                            billsIOwe += 
-                                '<div class="flex justify-between items-center py-2 border-b border-red-100">' +
-                                '<span class="text-red-800 font-medium">' + person + '</span>' +
-                                '<span class="font-bold text-red-900 text-lg">$' + amounts.bills.toFixed(2) + '</span>' +
-                                '</div>';
-                        }
-                    }
-                    
-                    if (billsIOwe) {
-                        iOweSummary = 
-                            '<div class="card fade-in mb-4">' +
-                            '<div class="p-4 bg-red-50 border-l-4 border-red-500">' +
-                            '<div class="flex items-center gap-2 mb-3">' +
-                            '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
-                            '</svg>' +
-                            '<h3 class="font-bold text-red-900"><span class="inline-block w-3 h-3 bg-red-500 rounded-full mr-2"></span>Money You Owe (Bills)</h3>' +
-                            '</div>' +
-                            billsIOwe +
-                            '</div>' +
-                            '</div>';
-                    }
-                }
-                
-                return unpaidSummary + iOweSummary + '<div class="card fade-in">' +
+                return '<div class="card fade-in">' +
                     '<div class="p-6 border-b flex justify-between items-center">' +
                     '<h2 class="text-xl font-bold">Bills & Payments</h2>' +
                     '<button data-action="show-modal" data-modal="bill" class="btn btn-primary">' +
@@ -4241,115 +2624,7 @@
                     '</div>';
             }
 
-            async renderExpensesTab(expenses) {
-
-
-                // Calculate unpaid amounts by person (only if service is available)
-
-
-                let unpaidByPerson = {};
-                let iOweByPerson = {};
-                
-                if (this.currentUser) {
-                    try {
-                        unpaidByPerson = await storage.calculateUnpaidByPerson();
-                        iOweByPerson = await storage.calculateWhatIOwe();
-                    } catch (error) {
-                        console.log('Could not fetch unpaid amounts:', error);
-                    }
-                }
-
-
-                
-
-
-                // Build unpaid summary card
-
-
-                let unpaidSummary = '';
-
-
-                if (Object.keys(unpaidByPerson).length > 0) {
-
-
-                    let expensesOwed = '';
-
-
-                    for (const [person, amounts] of Object.entries(unpaidByPerson)) {
-
-
-                        if (amounts.expenses > 0) {
-
-
-                            expensesOwed += 
-
-
-                                '<div class="flex justify-between items-center py-2 border-b border-orange-100">' +
-
-
-                                '<span class="text-orange-800 font-medium">' + person + '</span>' +
-
-
-                                '<span class="font-bold text-orange-900 text-lg">$' + amounts.expenses.toFixed(2) + '</span>' +
-
-
-                                '</div>';
-
-
-                        }
-
-
-                    }
-
-
-                    
-
-
-                    if (expensesOwed) {
-
-
-                        unpaidSummary = 
-
-
-                            '<div class="card fade-in mb-4">' +
-
-
-                            '<div class="p-4 bg-green-50 border-l-4 border-green-500">' +
-
-
-                            '<div class="flex items-center gap-2 mb-3">' +
-
-
-                            '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-
-
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
-
-
-                            '</svg>' +
-
-
-                            '<h3 class="font-bold text-green-900"><span class="inline-block w-3 h-3 bg-green-500 rounded-full mr-2"></span>Money Owed to You (Expenses)</h3>' +
-
-
-                            '</div>' +
-
-
-                            expensesOwed +
-
-
-                            '</div>' +
-
-
-                            '</div>';
-
-
-                    }
-
-
-                }
-
-
+            renderExpensesTab(expenses) {
                 let expensesContent = '';
                 
                 if (expenses.length === 0) {
@@ -4413,32 +2688,6 @@
                             actionButton = '<button data-action="mark-paid" data-bill-id="' + expense.id + '" data-shared="' + isShared + '" data-share-id="' + shareId + '" class="w-full mt-3 btn btn-success">Mark as Paid</button>';
                         }
                         
-                        // Fetch attachments for this expense
-                        const attachments = await storage.getAttachments(expense.id);
-                        let attachmentSection = '';
-                        if (attachments.length > 0) {
-                            attachmentSection = '<div class="mt-3 pt-3 border-t border-gray-200">' +
-                                '<div class="flex items-center gap-2 mb-2">' +
-                                '<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />' +
-                                '</svg>' +
-                                '<span class="text-sm font-medium text-gray-700">' + attachments.length + ' attachment' + (attachments.length > 1 ? 's' : '') + '</span>' +
-                                '</div>' +
-                                '<div class="flex flex-wrap gap-2">';
-                            
-                            attachments.forEach(att => {
-                                attachmentSection += 
-                                    '<div class="relative group">' +
-                                    '<img src="' + att.file_data + '" alt="' + att.file_name + '" class="w-20 h-20 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-75" data-action="view-attachment" data-attachment-data="' + att.file_data + '" data-attachment-name="' + att.file_name + '">' +
-                                    '<button data-action="delete-attachment" data-attachment-id="' + att.id + '" class="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition" title="Delete">' +
-                                    '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>' +
-                                    '</button>' +
-                                    '</div>';
-                            });
-                            
-                            attachmentSection += '</div></div>';
-                        }
-                        
                         expensesList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
                             '<div class="flex items-center justify-between mb-3">' +
                             '<div class="flex items-center space-x-4 flex-1">' +
@@ -4464,12 +2713,7 @@
                             totalInfo +
                             '<span class="' + status.class + '">' + status.status + '</span>' +
                             '</div>' +
-                            '<button data-action="edit-expense" data-expense-id="' + expense.id + '" class="btn p-2 text-blue-600 hover:text-blue-800" title="Edit Expense">' +
-                            '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' + 
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />' +
-                            '</svg>' +
-                            '</button>' +
-                            '<button data-action="delete-bill" data-bill-id="' + expense.id + '" class="btn p-2 text-red-600 hover:text-red-800" title="Delete Expense">' +
+                            '<button data-action="delete-bill" data-bill-id="' + expense.id + '" class="btn p-2 text-red-600 hover:text-red-800">' +
                             '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' + 
                             '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />' +
                             '</svg>' +
@@ -4477,44 +2721,13 @@
                             '</div>' +
                             '</div>' +
                             splitDetails +
-                            attachmentSection +
                             actionButton +
                             '</div>';
                     }
                     expensesContent = '<div class="space-y-3">' + expensesList + '</div>';
                 }
                 
-                // Build Money You Owe summary (Expenses - Red)
-                let iOweSummary = '';
-                if (Object.keys(iOweByPerson).length > 0) {
-                    let expensesIOwe = '';
-                    for (const [person, amounts] of Object.entries(iOweByPerson)) {
-                        if (amounts.expenses > 0) {
-                            expensesIOwe += 
-                                '<div class="flex justify-between items-center py-2 border-b border-red-100">' +
-                                '<span class="text-red-800 font-medium">' + person + '</span>' +
-                                '<span class="font-bold text-red-900 text-lg">$' + amounts.expenses.toFixed(2) + '</span>' +
-                                '</div>';
-                        }
-                    }
-                    
-                    if (expensesIOwe) {
-                        iOweSummary = 
-                            '<div class="card fade-in mb-4">' +
-                            '<div class="p-4 bg-red-50 border-l-4 border-red-500">' +
-                            '<div class="flex items-center gap-2 mb-3">' +
-                            '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />' +
-                            '</svg>' +
-                            '<h3 class="font-bold text-red-900"><span class="inline-block w-3 h-3 bg-red-500 rounded-full mr-2"></span>Money You Owe (Expenses)</h3>' +
-                            '</div>' +
-                            expensesIOwe +
-                            '</div>' +
-                            '</div>';
-                    }
-                }
-                
-                return unpaidSummary + iOweSummary + '<div class="card fade-in">' +
+                return '<div class="card fade-in">' +
                     '<div class="p-6 border-b flex justify-between items-center">' +
                     '<h2 class="text-xl font-bold">Expenses</h2>' +
                     '<button data-action="show-modal" data-modal="expense" class="btn btn-primary">' +
@@ -4528,12 +2741,8 @@
                     '</div>';
             }
 
-            async renderHistoryTab(history) {
-                console.log('renderHistoryTab called with:', history);
+            renderHistoryTab(history) {
                 let historyContent = '';
-                
-                // Get connections for shared bill/expense info
-                const connections = await storage.getUserConnections();
                 
                 if (history.length === 0) {
                     historyContent = '<div class="text-center py-12">' +
@@ -4546,23 +2755,9 @@
                 } else {
                     let historyList = '';
                     for (const item of history) {
-                        const isShared = item.is_shared || (item.bill_shares && item.bill_shares.length > 0);
+                        const isShared = item.is_shared || false;
                         const userAmount = item.user_share || item.amount;
                         const isExpense = item.category === 'expense';
-                        
-                        // Get shared partner names from bill_shares
-                        let sharedWithNames = [];
-                        if (item.bill_shares && Array.isArray(item.bill_shares) && item.bill_shares.length > 0) {
-                            item.bill_shares.forEach(share => {
-                                // Skip current user
-                                if (share.user_id !== this.currentUser.id) {
-                                    const partner = connections.find(c => c.id === share.user_id);
-                                    if (partner) {
-                                        sharedWithNames.push(partner.name);
-                                    }
-                                }
-                            });
-                        }
                         
                         // Parse receipt items if they exist (for expenses)
                         let receiptItems = [];
@@ -4584,15 +2779,6 @@
                             indicators.push('<span class="personal-indicator">Personal</span>');
                         }
                         
-                        // Build shared with info
-                        let sharedInfo = '';
-                        if (sharedWithNames.length > 0) {
-                            const partnerText = sharedWithNames.length === 1 ? sharedWithNames[0] : 
-                                               sharedWithNames.length === 2 ? sharedWithNames.join(' & ') :
-                                               sharedWithNames.slice(0, -1).join(', ') + ' & ' + sharedWithNames[sharedWithNames.length - 1];
-                            sharedInfo = '<p class="text-xs text-blue-600 mt-1 font-medium">👥 Shared with ' + partnerText + '</p>';
-                        }
-                        
                         const totalInfo = (isShared && item.amount !== userAmount) ? 
                             '<p class="text-xs text-gray-500">Total: $' + item.amount.toFixed(2) + '</p>' : '';
                         
@@ -4607,7 +2793,7 @@
                             receiptItemsHTML += '</ul></div>';
                         }
                         
-                        historyList += '<div class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
+                        historyList += '<div class="p-4 bg-gray-50 rounded-lg">' +
                             '<div class="flex items-center justify-between mb-3">' +
                             '<div class="flex items-center space-x-4 flex-1">' +
                             '<div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">' +
@@ -4624,7 +2810,6 @@
                             (isExpense ? 'Date: ' : 'Due: ') + 
                             new Date(item.due_date).toLocaleDateString() + 
                             (isExpense ? '' : ' • ' + item.category) + '</p>' +
-                            sharedInfo +
                             receiptItemsHTML +
                             '</div>' +
                             '</div>' +
@@ -4650,42 +2835,6 @@
         }
 
         // Helper functions for dynamic UI
-        function formatMessageTimestamp(dateString) {
-            const messageDate = new Date(dateString);
-            const now = new Date();
-            const diffMs = now - messageDate;
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffDays = Math.floor(diffMs / 86400000);
-            
-            // Now - under 1 minute
-            if (diffMins < 1) {
-                return 'Now';
-            }
-            // X mins ago - under 1 hour
-            else if (diffMins < 60) {
-                return diffMins + ' min' + (diffMins > 1 ? 's' : '') + ' ago';
-            }
-            // X hrs ago - under 24 hours
-            else if (diffHours < 24) {
-                return diffHours + ' hr' + (diffHours > 1 ? 's' : '') + ' ago';
-            }
-            // Yesterday
-            else if (diffDays === 1) {
-                return 'Yesterday';
-            }
-            // Day name for this week (last 7 days)
-            else if (diffDays < 7) {
-                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                return days[messageDate.getDay()];
-            }
-            // Full date for older
-            else {
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                return months[messageDate.getMonth()] + ' ' + messageDate.getDate() + ', ' + messageDate.getFullYear();
-            }
-        }
-        
         function toggleSplitType(shareWithValue) {
             const splitOptions = document.getElementById('split-options');
             if (splitOptions) {
@@ -4708,335 +2857,10 @@
             }
         }
 
-        // NEW: Multi-person expense split preview and calculation
-        function updateExpenseSplitPreview() {
-            const checkedBoxes = document.querySelectorAll('input[name="shareWith[]"]:checked');
-            const splitOptions = document.getElementById('split-options');
-            const totalAmountInput = document.querySelector('input[name="totalAmount"]');
-            const totalAmount = parseFloat(totalAmountInput?.value || 0);
-            
-            // Show/hide split options based on selection
-            if (splitOptions) {
-                splitOptions.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
-            }
-            
-            if (checkedBoxes.length === 0 || totalAmount === 0) return;
-            
-            const selectedPeople = Array.from(checkedBoxes);
-            const splitType = document.querySelector('input[name="splitType"]:checked')?.value || 'equal';
-            
-            // Update split preview based on type
-            updateSplitTypeDisplay(splitType);
-            
-            if (splitType === 'equal') {
-                updateEqualSplitPreview(selectedPeople, totalAmount);
-            } else if (splitType === 'percentage') {
-                updatePercentageSplitInputs(selectedPeople, totalAmount);
-            } else if (splitType === 'custom') {
-                updateCustomSplitInputs(selectedPeople, totalAmount);
-            }
-        }
-        
-        function updateSplitTypeDisplay(splitType) {
-            const equalPreview = document.getElementById('equal-split-preview');
-            const percentageDiv = document.getElementById('percentage-split');
-            const customDiv = document.getElementById('custom-split');
-            
-            if (equalPreview) equalPreview.style.display = splitType === 'equal' ? 'block' : 'none';
-            if (percentageDiv) percentageDiv.style.display = splitType === 'percentage' ? 'block' : 'none';
-            if (customDiv) customDiv.style.display = splitType === 'custom' ? 'block' : 'none';
-        }
-        
-        function updateEqualSplitPreview(selectedPeople, totalAmount) {
-            const peopleCount = selectedPeople.length + 1; // +1 for creator
-            const perPerson = totalAmount / peopleCount;
-            
-            const equalYouAmount = document.getElementById('equal-you-amount');
-            const equalOthersList = document.getElementById('equal-others-list');
-            const equalPerPerson = document.getElementById('equal-per-person');
-            
-            if (equalYouAmount) equalYouAmount.textContent = '$' + perPerson.toFixed(2);
-            if (equalPerPerson) equalPerPerson.textContent = '$' + perPerson.toFixed(2);
-            
-            if (equalOthersList) {
-                let othersHTML = '';
-                selectedPeople.forEach(checkbox => {
-                    const label = checkbox.closest('label');
-                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                    othersHTML += '<div class="flex justify-between"><span>' + name + ':</span><span>$' + perPerson.toFixed(2) + '</span></div>';
-                });
-                equalOthersList.innerHTML = othersHTML;
-            }
-        }
-        
-        function updatePercentageSplitInputs(selectedPeople, totalAmount) {
-            const percentageOthersList = document.getElementById('percentage-others-list');
-            
-            if (percentageOthersList) {
-                // Only regenerate if the number of inputs doesn't match
-                const existingInputs = percentageOthersList.querySelectorAll('input[type="number"]');
-                if (existingInputs.length !== selectedPeople.length) {
-                    let othersHTML = '';
-                    selectedPeople.forEach(checkbox => {
-                        const label = checkbox.closest('label');
-                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                        const userId = checkbox.value;
-                        othersHTML += 
-                            '<div class="flex justify-between items-center">' +
-                            '<span class="text-sm">' + name + ':</span>' +
-                            '<div class="flex items-center space-x-1">' +
-                            '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateExpenseSplitPreview()">' +
-                            '<span class="text-sm">%</span>' +
-                            '</div>' +
-                            '</div>';
-                    });
-                    percentageOthersList.innerHTML = othersHTML;
-                }
-            }
-            
-            // Calculate total percentage
-            const userPercentage = parseFloat(document.querySelector('input[name="userPercentage"]')?.value || 0);
-            let totalPercentage = userPercentage;
-            
-            selectedPeople.forEach(checkbox => {
-                const userId = checkbox.value;
-                const percentInput = document.querySelector('input[name="percentage-' + userId + '"]');
-                totalPercentage += parseFloat(percentInput?.value || 0);
-            });
-            
-            const percentTotal = document.getElementById('percentage-total');
-            const percentError = document.getElementById('percentage-error');
-            
-            if (percentTotal) {
-                percentTotal.textContent = totalPercentage.toFixed(2) + '%';
-                percentTotal.className = totalPercentage === 100 ? 'font-medium text-green-600' : 'font-medium text-red-600';
-            }
-            
-            if (percentError) {
-                percentError.style.display = totalPercentage !== 100 ? 'block' : 'none';
-            }
-        }
-        
-        function updateCustomSplitInputs(selectedPeople, totalAmount) {
-            const customOthersList = document.getElementById('custom-others-list');
-            
-            if (customOthersList) {
-                // Only regenerate if the number of inputs doesn't match
-                const existingInputs = customOthersList.querySelectorAll('input[type="number"]');
-                if (existingInputs.length !== selectedPeople.length) {
-                    let othersHTML = '';
-                    selectedPeople.forEach(checkbox => {
-                        const label = checkbox.closest('label');
-                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                        const userId = checkbox.value;
-                        othersHTML += 
-                            '<div class="flex justify-between items-center">' +
-                            '<span class="text-sm">' + name + ':</span>' +
-                            '<div class="flex items-center space-x-1">' +
-                            '<span class="text-sm">$</span>' +
-                            '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateExpenseSplitPreview()">' +
-                            '</div>' +
-                            '</div>';
-                    });
-                    customOthersList.innerHTML = othersHTML;
-                }
-            }
-            
-            // Calculate total custom amounts
-            const userAmount = parseFloat(document.querySelector('input[name="userAmount"]')?.value || 0);
-            let totalCustom = userAmount;
-            
-            selectedPeople.forEach(checkbox => {
-                const userId = checkbox.value;
-                const amountInput = document.querySelector('input[name="custom-' + userId + '"]');
-                totalCustom += parseFloat(amountInput?.value || 0);
-            });
-            
-            const customTotal = document.getElementById('custom-total');
-            const customExpenseTotal = document.getElementById('custom-expense-total');
-            const customError = document.getElementById('custom-error');
-            
-            if (customTotal) {
-                customTotal.textContent = '$' + totalCustom.toFixed(2);
-                customTotal.className = Math.abs(totalCustom - totalAmount) < 0.01 ? 'font-medium text-green-600' : 'font-medium text-red-600';
-            }
-            
-            if (customExpenseTotal) {
-                customExpenseTotal.textContent = '$' + totalAmount.toFixed(2);
-            }
-            
-            if (customError) {
-                customError.style.display = Math.abs(totalCustom - totalAmount) >= 0.01 ? 'block' : 'none';
-            }
-        }
-
-        // NEW: Multi-person bill split preview and calculation
-        function updateBillSplitPreview() {
-            const checkedBoxes = document.querySelectorAll('input[name="shareWith[]"]:checked');
-            const splitOptions = document.getElementById('split-options-bill');
-            const amountInput = document.querySelector('input[name="amount"]');
-            const totalAmount = parseFloat(amountInput?.value || 0);
-            
-            // Show/hide split options based on selection
-            if (splitOptions) {
-                splitOptions.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
-            }
-            
-            if (checkedBoxes.length === 0 || totalAmount === 0) return;
-            
-            const selectedPeople = Array.from(checkedBoxes);
-            const splitType = document.querySelector('input[name="splitType"]:checked')?.value || 'equal';
-            
-            // Update split preview based on type
-            updateBillSplitTypeDisplay(splitType);
-            
-            if (splitType === 'equal') {
-                updateEqualBillSplitPreview(selectedPeople, totalAmount);
-            } else if (splitType === 'percentage') {
-                updatePercentageBillSplitInputs(selectedPeople, totalAmount);
-            } else if (splitType === 'custom') {
-                updateCustomBillSplitInputs(selectedPeople, totalAmount);
-            }
-        }
-        
-        function updateBillSplitTypeDisplay(splitType) {
-            const equalPreview = document.getElementById('equal-split-preview-bill');
-            const percentageDiv = document.getElementById('percentage-split-bill');
-            const customDiv = document.getElementById('custom-split-bill');
-            
-            if (equalPreview) equalPreview.style.display = splitType === 'equal' ? 'block' : 'none';
-            if (percentageDiv) percentageDiv.style.display = splitType === 'percentage' ? 'block' : 'none';
-            if (customDiv) customDiv.style.display = splitType === 'custom' ? 'block' : 'none';
-        }
-        
-        function updateEqualBillSplitPreview(selectedPeople, totalAmount) {
-            const peopleCount = selectedPeople.length + 1;
-            const perPerson = totalAmount / peopleCount;
-            
-            const equalYouAmount = document.getElementById('equal-you-amount-bill');
-            const equalOthersList = document.getElementById('equal-others-list-bill');
-            const equalPerPerson = document.getElementById('equal-per-person-bill');
-            
-            if (equalYouAmount) equalYouAmount.textContent = '$' + perPerson.toFixed(2);
-            if (equalPerPerson) equalPerPerson.textContent = '$' + perPerson.toFixed(2);
-            
-            if (equalOthersList) {
-                let othersHTML = '';
-                selectedPeople.forEach(checkbox => {
-                    const label = checkbox.closest('label');
-                    const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                    othersHTML += '<div class="flex justify-between"><span>' + name + ':</span><span>$' + perPerson.toFixed(2) + '</span></div>';
-                });
-                equalOthersList.innerHTML = othersHTML;
-            }
-        }
-        
-        function updatePercentageBillSplitInputs(selectedPeople, totalAmount) {
-            const percentageOthersList = document.getElementById('percentage-others-list-bill');
-            
-            if (percentageOthersList) {
-                // Only regenerate if the number of inputs doesn't match
-                const existingInputs = percentageOthersList.querySelectorAll('input[type="number"]');
-                if (existingInputs.length !== selectedPeople.length) {
-                    let othersHTML = '';
-                    selectedPeople.forEach(checkbox => {
-                        const label = checkbox.closest('label');
-                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                        const userId = checkbox.value;
-                        othersHTML += 
-                            '<div class="flex justify-between items-center">' +
-                            '<span class="text-sm">' + name + ':</span>' +
-                            '<div class="flex items-center space-x-1">' +
-                            '<input type="number" name="percentage-' + userId + '" placeholder="0" min="0" max="100" step="0.01" class="form-input w-20 text-sm" oninput="window.updateBillSplitPreview()">' +
-                            '<span class="text-sm">%</span>' +
-                            '</div>' +
-                            '</div>';
-                    });
-                    percentageOthersList.innerHTML = othersHTML;
-                }
-            }
-            
-            const userPercentage = parseFloat(document.querySelector('input[name="userPercentage"]')?.value || 0);
-            let totalPercentage = userPercentage;
-            
-            selectedPeople.forEach(checkbox => {
-                const userId = checkbox.value;
-                const percentInput = document.querySelector('input[name="percentage-' + userId + '"]');
-                totalPercentage += parseFloat(percentInput?.value || 0);
-            });
-            
-            const percentTotal = document.getElementById('percentage-total-bill');
-            const percentError = document.getElementById('percentage-error-bill');
-            
-            if (percentTotal) {
-                percentTotal.textContent = totalPercentage.toFixed(2) + '%';
-                percentTotal.className = totalPercentage === 100 ? 'font-medium text-green-600' : 'font-medium text-red-600';
-            }
-            
-            if (percentError) {
-                percentError.style.display = totalPercentage !== 100 ? 'block' : 'none';
-            }
-        }
-        
-        function updateCustomBillSplitInputs(selectedPeople, totalAmount) {
-            const customOthersList = document.getElementById('custom-others-list-bill');
-            
-            if (customOthersList) {
-                // Only regenerate if the number of inputs doesn't match
-                const existingInputs = customOthersList.querySelectorAll('input[type="number"]');
-                if (existingInputs.length !== selectedPeople.length) {
-                    let othersHTML = '';
-                    selectedPeople.forEach(checkbox => {
-                        const label = checkbox.closest('label');
-                        const name = label?.querySelector('p.font-medium')?.textContent || 'Unknown';
-                        const userId = checkbox.value;
-                        othersHTML += 
-                            '<div class="flex justify-between items-center">' +
-                            '<span class="text-sm">' + name + ':</span>' +
-                            '<div class="flex items-center space-x-1">' +
-                            '<span class="text-sm">$</span>' +
-                            '<input type="number" name="custom-' + userId + '" placeholder="0.00" step="0.01" min="0" class="form-input w-24 text-sm" oninput="window.updateBillSplitPreview()">' +
-                            '</div>' +
-                            '</div>';
-                    });
-                    customOthersList.innerHTML = othersHTML;
-                }
-            }
-            
-            const userAmount = parseFloat(document.querySelector('input[name="userAmount"]')?.value || 0);
-            let totalCustom = userAmount;
-            
-            selectedPeople.forEach(checkbox => {
-                const userId = checkbox.value;
-                const amountInput = document.querySelector('input[name="custom-' + userId + '"]');
-                totalCustom += parseFloat(amountInput?.value || 0);
-            });
-            
-            const customTotal = document.getElementById('custom-total-bill');
-            const customBillTotal = document.getElementById('custom-bill-total');
-            const customError = document.getElementById('custom-error-bill');
-            
-            if (customTotal) {
-                customTotal.textContent = '$' + totalCustom.toFixed(2);
-                customTotal.className = Math.abs(totalCustom - totalAmount) < 0.01 ? 'font-medium text-green-600' : 'font-medium text-red-600';
-            }
-            
-            if (customBillTotal) {
-                customBillTotal.textContent = '$' + totalAmount.toFixed(2);
-            }
-            
-            if (customError) {
-                customError.style.display = Math.abs(totalCustom - totalAmount) >= 0.01 ? 'block' : 'none';
-            }
-        }
-
         // Attach functions to window for inline event handlers
         window.toggleSplitType = toggleSplitType;
         window.toggleRecurrenceOptions = toggleRecurrenceOptions;
         window.updatePercentageOther = updatePercentageOther;
-        window.updateExpenseSplitPreview = updateExpenseSplitPreview;
-        window.updateBillSplitPreview = updateBillSplitPreview;
-        window.formatMessageTimestamp = formatMessageTimestamp;
 
         // Handle custom split radio change
         document.addEventListener('change', (e) => {
@@ -5067,4 +2891,3 @@
     </script>
 </body>
 </html>
-
